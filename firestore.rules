@@ -1,0 +1,236 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: uid
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string
+    //   - photoURL: string
+    //   - lastActive: timestamp
+    //   - role: string
+    //
+    // Collection: projects
+    // Document ID: projectId
+    // Fields:
+    //   - name: string (required)
+    //   - description: string
+    //   - ownerId: string (required)
+    //   - members: list (required)
+    //   - createdAt: timestamp
+    //
+    // Collection: kpis
+    // Document ID: kpiId
+    // Fields:
+    //   - projectId: string (required)
+    //   - name: string (required)
+    //   - statement: string
+    //   - targets: map
+    //   - unit: string
+    //   - pillar: string
+    //   - theme: string
+    //
+    // Collection: campaigns
+    // Document ID: campaignId
+    // Fields:
+    //   - projectId: string (required)
+    //   - name: string (required)
+    //   - status: string
+    //   - budget: number
+    //   - spent: number
+    //   - roi: number
+    //   - startDate: string
+    //   - endDate: string
+    //   - channel: string
+    //
+    // Collection: invitations
+    // Document ID: invitationId
+    // Fields:
+    //   - email: string (required)
+    //   - projectId: string (required)
+    //   - teamName: string
+    //   - role: string
+    //   - status: string (required)
+    //
+    // Collection: support_tickets
+    // Document ID: ticketId
+    // Fields:
+    //   - userId: string (required)
+    //   - userName: string
+    //   - subject: string (required)
+    //   - message: string (required)
+    //   - status: string (open, in-progress, resolved)
+    //   - createdAt: timestamp
+    //   - isPrivate: boolean
+    //   - replies: list
+    //
+    // ===============================================================
+
+    // Collection: tasks
+    // Document ID: taskId
+    // Fields:
+    //   - id: string (required)
+    //   - campaignId: string (required)
+    //   - kpiId: string
+    //   - name: string (required)
+    //   - owner: string
+    //   - status: string (todo, in-progress, completed, delayed)
+    //   - priority: string (low, medium, high)
+    //   - budget: number
+    //   - spent: number
+    //   - activityCost: number
+    //   - executionCost: number
+    //   - targetRevenue: number
+    //   - actualRevenue: number
+    //   - regionCosts: map
+    //   - schedules: list
+    //   - comments: list
+    //   - dueDate: string (date)
+    //
+    // ===============================================================
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "jacqueline.marketer@gmail.com" && request.auth.token.email_verified == true)); // Default admin
+    }
+
+    // Check if user is a member of a project (using document data)
+    function isProjectMemberData(data) {
+      return isAuthenticated() && 
+        (data.members.hasAny([request.auth.uid]) || data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Check if user is a member of a project (using projectId)
+    function isProjectMember(projectId) {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/projects/$(projectId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid || 
+         isAdmin());
+    }
+
+    // Check if user is the owner of a project
+    function isProjectOwner(projectId) {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    function isValidTask(data) {
+      return data.id is string &&
+             data.campaignId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             (!('status' in data) || data.status in ['todo', 'in-progress', 'completed', 'delayed']) &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high']) &&
+             (!('budget' in data) || data.budget is number) &&
+             (!('spent' in data) || data.spent is number) &&
+             (!('dueDate' in data) || data.dueDate is string);
+    }
+
+    function isValidKpi(data) {
+      return data.id is string &&
+             data.projectId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             (!('statement' in data) || data.statement is string) &&
+             (!('unit' in data) || data.unit is string) &&
+             (!('pillar' in data) || data.pillar is string) &&
+             (!('theme' in data) || data.theme is string);
+    }
+
+    function isValidPerformanceEntry(data) {
+      return data.id is string &&
+             data.campaignId is string &&
+             data.kpiId is string &&
+             data.region is string &&
+             data.date is string &&
+             data.revenue is number &&
+             data.cost is number &&
+             data.leads is number &&
+             data.mqls is number &&
+             data.sqls is number &&
+             data.customers is number &&
+             data.clicks is number &&
+             data.impressions is number &&
+             data.engagement is number &&
+             data.subscribers is number;
+    }
+
+    // User Profiles
+    match /users/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+
+    // Projects
+    match /projects/{projectId} {
+      allow read: if isProjectMemberData(resource.data) || resource.data.isPublic == true || isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isProjectOwner(projectId);
+      allow delete: if isProjectOwner(projectId);
+
+      // Performance Entries
+      match /performanceEntries/{entryId} {
+        allow read: if isProjectMember(projectId) || get(/databases/$(database)/documents/projects/$(projectId)).data.isPublic == true;
+        allow create: if isProjectMember(projectId) && isValidPerformanceEntry(request.resource.data);
+        allow update: if isProjectMember(projectId) && isValidPerformanceEntry(request.resource.data);
+        allow delete: if isProjectMember(projectId);
+      }
+    }
+
+    // KPIs
+    match /kpis/{kpiId} {
+      allow read: if isProjectMember(resource.data.projectId) || get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.isPublic == true;
+      allow create: if isProjectMember(request.resource.data.projectId) && isValidKpi(request.resource.data);
+      allow update: if isProjectMember(resource.data.projectId) && isValidKpi(request.resource.data);
+      allow delete: if isProjectMember(resource.data.projectId);
+    }
+
+    // Campaigns
+    match /campaigns/{campaignId} {
+      allow read: if isProjectMember(resource.data.projectId) || get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.isPublic == true;
+      allow create: if isProjectMember(request.resource.data.projectId);
+      allow update: if isProjectMember(resource.data.projectId);
+      allow delete: if isProjectMember(resource.data.projectId);
+    }
+
+    // Invitations
+    match /invitations/{invitationId} {
+      allow read, list: if isAuthenticated();
+      allow create: if isAuthenticated(); 
+      allow update: if isAuthenticated() && (
+        request.auth.token.email == resource.data.email || 
+        resource.data.token == request.resource.data.token ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (request.auth.token.email == resource.data.email || isProjectOwner(resource.data.projectId) || isAdmin());
+    }
+
+    // Tasks
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() || get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/campaigns/$(resource.data.campaignId)).data.projectId)).data.isPublic == true;
+      allow create: if isAuthenticated() && isValidTask(request.resource.data);
+      allow update: if isAuthenticated() && isValidTask(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    // Support Tickets
+    match /support_tickets/{ticketId} {
+      allow read: if isAuthenticated() && (!resource.data.isPrivate || resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+  }
+}

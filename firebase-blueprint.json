@@ -1,0 +1,229 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and project associations.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "projects": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "List of project IDs the user belongs to."
+        },
+        "dashboardLayouts": {
+          "type": "object",
+          "description": "Custom dashboard layouts per project ID."
+        },
+        "theme": { "type": "string" },
+        "language": { "type": "string" },
+        "crmConfig": { "type": "object" },
+        "powerBIConfig": { "type": "object" },
+        "alertSettings": { "type": "object" },
+        "lastActive": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Project": {
+      "title": "Team Project",
+      "description": "A team project containing dashboards, KPIs, and campaigns.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string", "description": "UID of the project owner." },
+        "members": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "List of member UIDs."
+        },
+        "memberRoles": {
+          "type": "object",
+          "description": "Map of UID to role string."
+        },
+        "defaultWidgets": {
+          "type": "array",
+          "description": "Default dashboard widget configuration set by owner."
+        },
+        "isPublic": { "type": "boolean", "description": "Whether the project is publicly viewable via shared link." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "ownerId"]
+    },
+    "Task": {
+      "title": "Project Task",
+      "description": "A specific task or activity within a campaign.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "kpiId": { "type": "string" },
+        "name": { "type": "string" },
+        "owner": { "type": "string" },
+        "status": { "type": "string", "enum": ["todo", "in-progress", "completed", "delayed"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "budget": { "type": "number" },
+        "spent": { "type": "number" },
+        "activityCost": { "type": "number" },
+        "executionCost": { "type": "number" },
+        "targetRevenue": { "type": "number" },
+        "actualRevenue": { "type": "number" },
+        "regionCosts": { "type": "object" },
+        "schedules": { "type": "array" },
+        "comments": { "type": "array" },
+        "dueDate": { "type": "string", "format": "date" }
+      },
+      "required": ["id", "campaignId", "name"]
+    },
+    "KPI": {
+      "title": "Key Performance Indicator",
+      "description": "A KPI definition associated with a project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "name": { "type": "string" },
+        "statement": { "type": "string" },
+        "targets": { "type": "object" },
+        "unit": { "type": "string" },
+        "pillar": { "type": "string" },
+        "theme": { "type": "string" },
+        "regionalCost": { "type": "object" }
+      },
+      "required": ["id", "projectId", "name"]
+    },
+    "Campaign": {
+      "title": "Marketing Campaign",
+      "description": "A campaign associated with a project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "completed"] },
+        "budget": { "type": "number" },
+        "spent": { "type": "number" },
+        "roi": { "type": "number" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "channel": { "type": "string" }
+      },
+      "required": ["id", "projectId", "name"]
+    },
+    "Invitation": {
+      "title": "Team Invitation",
+      "description": "An invitation for a user to join a team.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "projectId": { "type": "string" },
+        "teamName": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] }
+      },
+      "required": ["id", "email", "projectId"]
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "A support request or inquiry from a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isPrivate": { "type": "boolean" },
+        "replies": { "type": "array" }
+      },
+      "required": ["id", "userId", "subject", "message"]
+    },
+    "PerformanceEntry": {
+      "title": "Performance Entry",
+      "description": "A manual performance data entry for a KPI and campaign.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "kpiId": { "type": "string" },
+        "customer": { "type": "string" },
+        "region": { "type": "string" },
+        "country": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "revenue": { "type": "number" },
+        "cost": { "type": "number" },
+        "leads": { "type": "number" },
+        "mqls": { "type": "number" },
+        "sqls": { "type": "number" },
+        "customers": { "type": "number" },
+        "clicks": { "type": "number" },
+        "impressions": { "type": "number" },
+        "engagement": { "type": "number" },
+        "subscribers": { "type": "number" }
+      },
+      "required": ["id", "campaignId", "kpiId", "region", "date"]
+    }
+    "TeamComment": {
+      "title": "Team Comment",
+      "description": "A comment left by a team member in the team section.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "userHandle": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "projectId", "userId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Project metadata and membership."
+    },
+    "/projects/{projectId}/comments/{commentId}": {
+      "schema": "TeamComment",
+      "description": "Team-wide comments and discussions."
+    },
+    "/kpis/{kpiId}": {
+      "schema": "KPI",
+      "description": "KPI definitions."
+    },
+    "/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Campaign data."
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Task data."
+    },
+    "/invitations/{invitationId}": {
+      "schema": "Invitation",
+      "description": "Pending invitations."
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "User support inquiries and replies."
+    },
+    "/projects/{projectId}/performanceEntries/{entryId}": {
+      "schema": "PerformanceEntry",
+      "description": "Manual performance tracking entries."
+    }
+  }
+}

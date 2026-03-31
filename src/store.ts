@@ -1,0 +1,1043 @@
+import { create } from 'zustand';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut, 
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  where, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  addDoc,
+  serverTimestamp,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  writeBatch
+} from 'firebase/firestore';
+import { auth, db, googleProvider, microsoftProvider, handleFirestoreError, OperationType } from './firebase';
+import { 
+  Campaign, 
+  KPI, 
+  Lead, 
+  Task, 
+  Project, 
+  Screen, 
+  PowerBIConfig, 
+  TeamMember,
+  Invitation,
+  Region,
+  DashboardWidget,
+  Notification,
+  B2BCustomer,
+  CRMConfig,
+  User,
+  AlertSettings,
+  SupportTicket,
+  SupportReply,
+  PerformanceEntry,
+  TeamComment
+} from './types';
+import { REGIONS } from './constants';
+
+interface AppState {
+  // Auth State
+  user: FirebaseUser | null;
+  userProfile: User | null;
+  isAuthReady: boolean;
+  login: (provider: 'google') => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  logout: () => Promise<void>;
+
+  // Data State
+  projects: Project[];
+  currentProjectId: string;
+  kpis: KPI[];
+  campaigns: Campaign[];
+  tasks: Task[];
+  leads: Lead[];
+  teamMembers: TeamMember[];
+  invitations: Invitation[];
+  notifications: Notification[];
+  customers: B2BCustomer[];
+  crmConfig: CRMConfig;
+  supportTickets: SupportTicket[];
+  performanceEntries: PerformanceEntry[];
+  teamComments: TeamComment[];
+  
+  // UI State
+  activeScreen: Screen;
+  selectedCampaignId: string | null;
+  selectedKpiId: string | null;
+  selectedTaskId: string | null;
+  powerBIConfig: PowerBIConfig;
+  dashboardFilters: {
+    region: Region | 'All';
+    year: string;
+    quarter: string;
+    month: string;
+    visibleChannels: string[];
+    period: 'All' | 'Last 7 Days' | 'Last 30 Days' | 'This Quarter' | 'This Year';
+  };
+  projectWidgets: Record<string, DashboardWidget[]>;
+  theme: 'light' | 'dark';
+  language: string;
+  alertSettings: AlertSettings;
+
+  // Actions
+  setActiveScreen: (screen: Screen) => void;
+  setSelectedCampaignId: (id: string | null) => void;
+  setSelectedKpiId: (id: string | null) => void;
+  setSelectedTaskId: (id: string | null) => void;
+  setPowerBIConfig: (config: Partial<PowerBIConfig>) => Promise<void>;
+  updateLead: (id: string, updates: Partial<Lead>) => void;
+  setCurrentProjectId: (id: string) => void;
+  fetchProjectById: (id: string) => Promise<void>;
+  updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  setDashboardFilters: (filters: Partial<AppState['dashboardFilters']>) => void;
+  setProjectWidgets: (projectId: string, widgets: DashboardWidget[]) => void;
+  setKpis: (kpis: KPI[]) => void;
+  updateKpi: (id: string, updates: Partial<KPI>) => Promise<void>;
+  addKpi: (kpi: KPI) => void;
+  deleteKpi: (id: string) => void;
+  updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
+  deleteCampaign: (id: string) => void;
+  addTask: (task: Task) => void;
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (taskId: string) => void;
+  addNotification: (notification: Notification) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  addTeamMember: (member: TeamMember) => void;
+  inviteTeamMember: (email: string, role: string) => Promise<void>;
+  removeTeamMember: (uid: string) => Promise<void>;
+  updateTeamMemberRole: (uid: string, role: string) => Promise<void>;
+  addCustomer: (customer: B2BCustomer) => void;
+  bulkAddCustomers: (customers: B2BCustomer[]) => void;
+  updateCustomer: (id: string, updates: Partial<B2BCustomer>) => void;
+  deleteCustomer: (id: string) => void;
+  setCRMConfig: (config: Partial<CRMConfig>) => Promise<void>;
+  setTheme: (theme: 'light' | 'dark') => Promise<void>;
+  setLanguage: (lang: string) => Promise<void>;
+  setAlertSettings: (settings: Partial<AlertSettings>) => Promise<void>;
+  addSupportTicket: (ticket: { subject: string; message: string; isPrivate: boolean }) => Promise<void>;
+  addSupportReply: (ticketId: string, message: string, isAdmin: boolean) => Promise<void>;
+  resolveSupportTicket: (ticketId: string) => Promise<void>;
+  addPerformanceEntry: (entry: PerformanceEntry) => Promise<void>;
+  bulkAddPerformanceEntries: (entries: PerformanceEntry[]) => Promise<void>;
+  updatePerformanceEntry: (id: string, updates: Partial<PerformanceEntry>) => Promise<void>;
+  deletePerformanceEntry: (id: string) => Promise<void>;
+  joinProjectByToken: (token: string) => Promise<void>;
+  addTeamComment: (text: string) => Promise<void>;
+  updateTeamComment: (id: string, text: string) => Promise<void>;
+  deleteTeamComment: (id: string) => Promise<void>;
+  
+  // Async Actions
+  acceptInvitation: (id: string) => Promise<void>;
+  createProject: (name: string, description: string) => Promise<void>;
+  initializeAuth: () => void;
+}
+
+export const useStore = create<AppState>((set, get) => ({
+  user: null,
+  userProfile: null,
+  isAuthReady: false,
+  projects: [
+    {
+      id: 'p1',
+      name: 'Digital Marketing Excellence',
+      description: 'Main project for tracking all digital channel performance and KPIs.',
+      ownerId: 'tm1',
+      members: ['tm1', 'tm2', 'tm3', 'tm4'],
+      createdAt: new Date().toISOString(),
+      isPublic: true
+    }
+  ],
+  currentProjectId: 'p1',
+  kpis: [
+    {
+      id: 'kpi-digital-01',
+      projectId: 'p1',
+      name: 'Digital Channel Performance',
+      owners: ['tm1'],
+      statement: 'Maximize ROI and subscriber growth across all digital channels.',
+      targets: { q1: 300, q2: 350, q3: 400, q4: 450 },
+      unit: '%',
+      pillar: 'Growth',
+      theme: 'Digital Transformation',
+      campaigns: ['c1', 'c2'],
+      regionalCost: { ASIA: 50000, KOREA: 30000, EU: 40000, NA: 60000 } as any
+    }
+  ],
+  campaigns: [
+    {
+      id: 'c1',
+      projectId: 'p1',
+      name: 'Global Launch 2024',
+      status: 'active',
+      roi: 320,
+      budget: 50000,
+      spent: 42000,
+      actualRevenue: 180000,
+      startDate: '2024-01-01',
+      endDate: '2024-12-31',
+      regions: ['ASIA', 'EU', 'NA'],
+      channel: 'LinkedIn',
+      campaignType: 'Brand',
+      leads: 1200,
+      mqls: 450,
+      sqls: 180,
+      opportunities: 45,
+      regionalRevenue: { ASIA: 60000, EU: 50000, NA: 70000 } as any,
+      regionalCost: { ASIA: 15000, EU: 12000, NA: 15000 } as any,
+      currency: 'USD',
+      exchangeRate: 1,
+      clicks: 25000,
+      impressions: 500000,
+      socialMetrics: { engagement: 12000, followers: 5000, shares: 1500, subscribers: 2500 },
+    },
+    {
+      id: 'c2',
+      projectId: 'p1',
+      name: 'Product Expansion',
+      status: 'paused',
+      roi: 180,
+      budget: 30000,
+      spent: 28000,
+      actualRevenue: 78000,
+      startDate: '2024-02-01',
+      endDate: '2024-08-31',
+      regions: ['LATAM', 'CIS'],
+      channel: 'Google Ads',
+      campaignType: 'Promotion',
+      leads: 800,
+      mqls: 300,
+      sqls: 120,
+      opportunities: 30,
+      regionalRevenue: { LATAM: 40000, CIS: 38000 } as any,
+      regionalCost: { LATAM: 15000, CIS: 13000 } as any,
+      currency: 'USD',
+      exchangeRate: 1,
+      clicks: 45000,
+      impressions: 1200000,
+      socialMetrics: { engagement: 8000, followers: 2000, shares: 500, subscribers: 1200 },
+    },
+    {
+      id: 'c3',
+      projectId: 'p1',
+      name: 'SteerStar 리포지셔닝',
+      status: 'active',
+      roi: 245,
+      budget: 45000,
+      spent: 38000,
+      q4Target: 150000,
+      q4Actual: 135000,
+      actualRevenue: 135000,
+      startDate: '2024-09-01',
+      endDate: '2024-12-31',
+      regions: ['ASIA', 'KOREA'],
+      channel: 'Instagram',
+      campaignType: 'Brand',
+      leads: 950,
+      mqls: 320,
+      sqls: 140,
+      opportunities: 28,
+      regionalRevenue: { ASIA: 85000, KOREA: 50000 } as any,
+      regionalCost: { ASIA: 25000, KOREA: 13000 } as any,
+      currency: 'USD',
+      exchangeRate: 1,
+      clicks: 65000,
+      impressions: 2500000,
+      socialMetrics: { engagement: 45000, followers: 15000, shares: 8000, subscribers: 5500 },
+      performanceOverTime: [
+        { period: 8, revenue: 15000, spend: 8000, mqls: 80, sqls: 30, opportunityValue: 20000 },
+        { period: 9, revenue: 35000, spend: 10000, mqls: 120, sqls: 45, opportunityValue: 45000 },
+        { period: 10, revenue: 45000, spend: 10000, mqls: 150, sqls: 60, opportunityValue: 55000 },
+        { period: 11, revenue: 40000, spend: 10000, mqls: 130, sqls: 50, opportunityValue: 50000 },
+      ]
+    }
+  ],
+  tasks: [],
+  leads: [],
+  teamMembers: [],
+  invitations: [],
+  notifications: [],
+  customers: [
+    { id: 'cust1', companyName: 'Global Tech Corp', industry: 'Technology', region: 'ASIA', country: 'Singapore', contactPerson: 'John Doe', email: 'john@globaltech.com', phone: '+65 1234 5678', status: 'active', tier: 'Enterprise', totalRevenue: 500000 },
+    { id: 'cust2', companyName: 'Samsung Electronics', industry: 'Electronics', region: 'KOREA', country: 'South Korea', contactPerson: 'Lee Min-ho', email: 'minho@samsung.com', phone: '+82 10 1234 5678', status: 'active', tier: 'Enterprise', totalRevenue: 1200000 },
+    { id: 'cust3', companyName: 'Hyundai Motors', industry: 'Automotive', region: 'KOREA', country: 'South Korea', contactPerson: 'Park Seo-joon', email: 'seojoon@hyundai.com', phone: '+82 10 8765 4321', status: 'active', tier: 'Enterprise', totalRevenue: 800000 }
+  ],
+  supportTickets: [],
+  teamComments: [],
+  performanceEntries: [
+    {
+      id: 'perf-1',
+      campaignId: 'c1',
+      kpiId: 'kpi-digital-01',
+      customer: 'Global Tech Corp',
+      region: 'ASIA',
+      country: 'Singapore',
+      date: '2024-03-01',
+      revenue: 25000,
+      cost: 5000,
+      leads: 150,
+      mqls: 60,
+      sqls: 25,
+      customers: 5,
+      clicks: 5000,
+      impressions: 100000,
+      engagement: 2500,
+      subscribers: 450
+    },
+    {
+      id: 'perf-2',
+      campaignId: 'c3',
+      kpiId: 'kpi-digital-01',
+      customer: 'Samsung Electronics',
+      region: 'KOREA',
+      country: 'South Korea',
+      date: '2024-03-15',
+      revenue: 45000,
+      cost: 8000,
+      leads: 300,
+      mqls: 120,
+      sqls: 50,
+      customers: 12,
+      clicks: 12000,
+      impressions: 350000,
+      engagement: 8500,
+      subscribers: 1200
+    }
+  ],
+  crmConfig: { provider: 'Dynamics365', connected: false },
+  activeScreen: 'dashboard',
+  selectedCampaignId: null,
+  selectedKpiId: null,
+  selectedTaskId: null,
+  powerBIConfig: {
+    workspaceId: '',
+    reportId: '',
+    embedUrl: '',
+    connected: false
+  },
+  dashboardFilters: {
+    region: 'All',
+    year: new Date().getFullYear().toString(),
+    quarter: 'All',
+    month: 'All',
+    visibleChannels: ['Facebook', 'Instagram', 'LinkedIn', 'Google Ads', 'YouTube', 'TikTok'],
+    period: 'All',
+  },
+  projectWidgets: {},
+  theme: 'light',
+  language: 'ko',
+  alertSettings: {
+    budgetAlert80: true,
+    costSpike15: true,
+    mqlRateDrop: true,
+    roiUnder2: true,
+    campaignPaused: true,
+    adRejected: true,
+    aiMqlRefinement: true
+  },
+
+  setActiveScreen: (screen) => set({ activeScreen: screen }),
+  setSelectedCampaignId: (id) => set({ selectedCampaignId: id }),
+  setSelectedKpiId: (id) => set({ selectedKpiId: id }),
+  setSelectedTaskId: (id) => set({ selectedTaskId: id }),
+  setPowerBIConfig: async (config) => {
+    set((state) => ({
+      powerBIConfig: { ...state.powerBIConfig, ...config }
+    }));
+    const { user } = get();
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { powerBIConfig: { ...get().powerBIConfig, ...config } });
+    }
+  },
+  updateLead: (id, updates) => set((state) => ({
+    leads: state.leads.map(l => l.id === id ? { ...l, ...updates } : l)
+  })),
+  setDashboardFilters: (filters) => set((state) => ({ 
+    dashboardFilters: { ...state.dashboardFilters, ...filters } 
+  })),
+  setProjectWidgets: async (projectId, widgets) => {
+    const { user, userProfile, projects } = get();
+    set((state) => ({
+      projectWidgets: { ...state.projectWidgets, [projectId]: widgets }
+    }));
+
+    if (user) {
+      // Save to user's personal layout
+      const userRef = doc(db, 'users', user.uid);
+      const updatedLayouts = { ...(userProfile?.dashboardLayouts || {}), [projectId]: widgets };
+      await updateDoc(userRef, { dashboardLayouts: updatedLayouts });
+
+      // If user is the owner of the project, also save to project's defaultWidgets
+      const project = projects.find(p => p.id === projectId);
+      if (project && project.ownerId === user.uid) {
+        const projectRef = doc(db, 'projects', projectId);
+        await updateDoc(projectRef, { defaultWidgets: widgets });
+      }
+    }
+  },
+  setKpis: (kpis) => set({ kpis }),
+  updateKpi: async (id, updates) => {
+    set((state) => ({
+      kpis: state.kpis.map(k => k.id === id ? { ...k, ...updates } : k)
+    }));
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'kpis', id), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `kpis/${id}`);
+      }
+    }
+  },
+  addKpi: (kpi) => set((state) => ({ kpis: [...state.kpis, kpi] })),
+  deleteKpi: (id) => set((state) => ({ kpis: state.kpis.filter(k => k.id !== id) })),
+  updateCampaign: async (id, updates) => {
+    set((state) => ({
+      campaigns: state.campaigns.map(c => c.id === id ? { ...c, ...updates } : c)
+    }));
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'campaigns', id), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `campaigns/${id}`);
+      }
+    }
+  },
+  deleteCampaign: (id) => set((state) => ({
+    campaigns: state.campaigns.filter(c => c.id !== id)
+  })),
+  addTask: async (task) => {
+    set((state) => ({ tasks: [...state.tasks, task] }));
+    const { user } = get();
+    if (user) {
+      try {
+        await setDoc(doc(db, 'tasks', task.id), task);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `tasks/${task.id}`);
+      }
+    }
+  },
+  updateTask: async (taskId, updates) => {
+    set((state) => ({
+      tasks: state.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
+    }));
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'tasks', taskId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `tasks/${taskId}`);
+      }
+    }
+  },
+  deleteTask: async (taskId) => {
+    set((state) => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
+    const { user } = get();
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'tasks', taskId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `tasks/${taskId}`);
+      }
+    }
+  },
+  addNotification: (notification) => set((state) => ({
+    notifications: [notification, ...state.notifications]
+  })),
+  markNotificationRead: (id) => set((state) => ({
+    notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+  })),
+  markAllNotificationsRead: () => set((state) => ({
+    notifications: state.notifications.map(n => ({ ...n, read: true }))
+  })),
+  addTeamMember: (member) => set((state) => ({ teamMembers: [...state.teamMembers, member] })),
+  inviteTeamMember: async (email, role) => {
+    const { currentProjectId, projects, userProfile } = get();
+    if (!currentProjectId) return;
+    const project = projects.find(p => p.id === currentProjectId);
+    if (!project) return;
+
+    try {
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const invitation: Omit<Invitation, 'id'> = {
+        email,
+        projectId: currentProjectId,
+        teamName: project.name,
+        role,
+        status: 'pending',
+        token // Add token for link-based joining
+      };
+      await addDoc(collection(db, 'invitations'), invitation);
+      
+      // Add a notification for the inviter
+      get().addNotification({
+        id: `notif-${Date.now()}`,
+        taskId: '',
+        message: `Invitation sent to ${email}. Share the link to join!`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        type: 'system'
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'invitations');
+    }
+  },
+  removeTeamMember: async (uid) => {
+    const { currentProjectId, projects } = get();
+    if (!currentProjectId) return;
+    const project = projects.find(p => p.id === currentProjectId);
+    if (!project || project.ownerId === uid) return; // Cannot remove owner
+
+    try {
+      const updatedMembers = (project.members || []).filter(m => m !== uid);
+      const updatedRoles = { ...(project.memberRoles || {}) };
+      delete updatedRoles[uid];
+
+      await updateDoc(doc(db, 'projects', currentProjectId), {
+        members: updatedMembers,
+        memberRoles: updatedRoles
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${currentProjectId}`);
+    }
+  },
+  updateTeamMemberRole: async (uid, role) => {
+    const { currentProjectId, projects } = get();
+    if (!currentProjectId) return;
+    const project = projects.find(p => p.id === currentProjectId);
+    if (!project) return;
+
+    try {
+      const updatedRoles = { ...(project.memberRoles || {}), [uid]: role };
+      await updateDoc(doc(db, 'projects', currentProjectId), {
+        memberRoles: updatedRoles
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${currentProjectId}`);
+    }
+  },
+  addCustomer: (customer) => set((state) => ({ customers: [...state.customers, customer] })),
+  bulkAddCustomers: (newCustomers) => set((state) => ({ customers: [...state.customers, ...newCustomers] })),
+  updateCustomer: (id, updates) => set((state) => ({
+    customers: state.customers.map(c => c.id === id ? { ...c, ...updates } : c)
+  })),
+  deleteCustomer: (id) => set((state) => ({ customers: state.customers.filter(c => c.id !== id) })),
+  setCRMConfig: async (config) => {
+    set((state) => ({ crmConfig: { ...state.crmConfig, ...config } }));
+    const { user } = get();
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { crmConfig: { ...get().crmConfig, ...config } });
+    }
+  },
+  setTheme: async (theme) => {
+    set({ theme });
+    const { user } = get();
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { theme });
+    }
+  },
+  setLanguage: async (language) => {
+    set({ language });
+    const { user } = get();
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { language });
+    }
+  },
+  setAlertSettings: async (settings) => {
+    set((state) => ({ alertSettings: { ...state.alertSettings, ...settings } }));
+    const { user } = get();
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { alertSettings: { ...get().alertSettings, ...settings } });
+    }
+  },
+
+  addSupportTicket: async (ticket) => {
+    const { user, userProfile } = get();
+    if (!user) return;
+
+    try {
+      const ticketData = {
+        ...ticket,
+        userId: user.uid,
+        userName: userProfile?.displayName || user.email || 'Anonymous',
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        replies: []
+      };
+      await addDoc(collection(db, 'support_tickets'), ticketData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'support_tickets');
+    }
+  },
+
+  addSupportReply: async (ticketId, message, isAdmin) => {
+    const { user, userProfile, supportTickets } = get();
+    if (!user) return;
+
+    const ticket = supportTickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    try {
+      const reply: SupportReply = {
+        id: Math.random().toString(36).substr(2, 9),
+        author: userProfile?.displayName || user.email || 'Anonymous',
+        message,
+        timestamp: new Date().toISOString(),
+        isAdmin
+      };
+
+      const updatedReplies = [...ticket.replies, reply];
+      await updateDoc(doc(db, 'support_tickets', ticketId), { 
+        replies: updatedReplies,
+        status: isAdmin ? 'in-progress' : 'open'
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `support_tickets/${ticketId}`);
+    }
+  },
+
+  resolveSupportTicket: async (ticketId) => {
+    try {
+      await updateDoc(doc(db, 'support_tickets', ticketId), { status: 'resolved' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `support_tickets/${ticketId}`);
+    }
+  },
+
+  setCurrentProjectId: (id) => {
+    set({ currentProjectId: id });
+    const user = get().user;
+    if (!id) return;
+
+    // Sync KPIs for current project
+    const kpisQuery = query(collection(db, 'kpis'), where('projectId', '==', id));
+    onSnapshot(kpisQuery, (snapshot) => {
+      set({ kpis: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as KPI)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `kpis for ${id}`));
+
+    // Sync Campaigns for current project
+    const campaignsQuery = query(collection(db, 'campaigns'), where('projectId', '==', id));
+    onSnapshot(campaignsQuery, (snapshot) => {
+      set({ campaigns: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campaign)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `campaigns for ${id}`));
+
+    // Sync Team Members for current project
+    const projectRef = doc(db, 'projects', id);
+    onSnapshot(projectRef, async (snapshot) => {
+      if (!snapshot.exists()) return;
+      const project = snapshot.data() as Project;
+      const members = project.members || [];
+      const memberRoles = project.memberRoles || {};
+
+      // Fetch user profiles for all members
+      const memberProfiles: TeamMember[] = [];
+      for (const uid of members) {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as User;
+          memberProfiles.push({
+            id: uid,
+            name: userData.displayName || userData.email || 'Anonymous',
+            role: memberRoles[uid] || (uid === project.ownerId ? 'Admin' : 'Member'),
+            lastActive: userData.lastActive ? new Date(userData.lastActive).toLocaleString() : 'Never',
+            status: 'active', // Default to active for now
+            avatar: userData.photoURL || `https://picsum.photos/seed/${uid}/100/100`
+          });
+        }
+      }
+      set({ teamMembers: memberProfiles });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `project members for ${id}`));
+
+    // Sync Team Comments for current project
+    const commentsQuery = query(collection(db, 'projects', id, 'comments'));
+    onSnapshot(commentsQuery, (snapshot) => {
+      set({ teamComments: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamComment)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `comments for ${id}`));
+  },
+
+  fetchProjectById: async (id) => {
+    try {
+      const projectDoc = await getDoc(doc(db, 'projects', id));
+      if (projectDoc.exists()) {
+        const project = { id: projectDoc.id, ...projectDoc.data() } as Project;
+        set((state) => ({ 
+          projects: state.projects.find(p => p.id === id) ? state.projects : [...state.projects, project],
+          currentProjectId: id 
+        }));
+        
+        // Fetch KPIs and Campaigns
+        const kpisQuery = query(collection(db, 'kpis'), where('projectId', '==', id));
+        const kpisSnap = await getDocs(kpisQuery);
+        set({ kpis: kpisSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as KPI)) });
+        
+        const campaignsQuery = query(collection(db, 'campaigns'), where('projectId', '==', id));
+        const campaignsSnap = await getDocs(campaignsQuery);
+        const campaigns = campaignsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campaign));
+        set({ campaigns });
+
+        // Fetch Tasks for all campaigns
+        if (campaigns.length > 0) {
+          const campaignIds = campaigns.map(c => c.id);
+          const tasksQuery = query(collection(db, 'tasks'), where('campaignId', 'in', campaignIds));
+          const tasksSnap = await getDocs(tasksQuery);
+          set({ tasks: tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)) });
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `projects/${id}`);
+    }
+  },
+
+  updateProject: async (id, updates) => {
+    try {
+      await updateDoc(doc(db, 'projects', id), updates);
+      set((state) => ({
+        projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+      }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${id}`);
+    }
+  },
+
+  deleteProject: async (id) => {
+    const { projects, currentProjectId, setCurrentProjectId } = get();
+    try {
+      await deleteDoc(doc(db, 'projects', id));
+      const remainingProjects = projects.filter(p => p.id !== id);
+      set({ projects: remainingProjects });
+      
+      if (currentProjectId === id) {
+        if (remainingProjects.length > 0) {
+          setCurrentProjectId(remainingProjects[0].id);
+        } else {
+          set({ currentProjectId: null });
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `projects/${id}`);
+    }
+  },
+
+  initializeAuth: () => {
+    onAuthStateChanged(auth, async (user) => {
+      set({ user, isAuthReady: true });
+      if (user) {
+        // Sync user profile
+        const userRef = doc(db, 'users', user.uid);
+        onSnapshot(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const profile = snapshot.data() as User;
+            set({ userProfile: profile });
+            if (profile.dashboardLayouts) {
+              set({ projectWidgets: profile.dashboardLayouts });
+            }
+            if (profile.theme) {
+              set({ theme: profile.theme });
+            }
+            if (profile.language) {
+              set({ language: profile.language });
+            }
+            if (profile.crmConfig) {
+              set({ crmConfig: profile.crmConfig });
+            }
+            if (profile.powerBIConfig) {
+              set({ powerBIConfig: profile.powerBIConfig });
+            }
+            if (profile.alertSettings) {
+              set({ alertSettings: profile.alertSettings });
+            }
+          }
+        });
+
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          lastActive: serverTimestamp()
+        }, { merge: true });
+
+        // Sync Projects
+        const projectsQuery = query(
+          collection(db, 'projects'), 
+          where('members', 'array-contains', user.uid)
+        );
+        onSnapshot(projectsQuery, (snapshot) => {
+          const userProjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+          
+          set({ projects: userProjects });
+          if (userProjects.length > 0 && !get().currentProjectId) {
+            get().setCurrentProjectId(userProjects[0].id);
+          }
+        }, (error) => handleFirestoreError(error, OperationType.LIST, 'projects'));
+
+        // Sync Invitations
+        const invQuery = query(
+          collection(db, 'invitations'),
+          where('email', '==', user.email),
+          where('status', '==', 'pending')
+        );
+        onSnapshot(invQuery, (snapshot) => {
+          set({ invitations: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invitation)) });
+        }, (error) => handleFirestoreError(error, OperationType.LIST, 'invitations'));
+
+        // Sync Support Tickets
+        const supportQuery = query(collection(db, 'support_tickets'));
+        onSnapshot(supportQuery, (snapshot) => {
+          set({ supportTickets: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupportTicket)) });
+        }, (error) => handleFirestoreError(error, OperationType.LIST, 'support_tickets'));
+      } else {
+        set({ 
+          projects: [], 
+          currentProjectId: '', 
+          kpis: [], 
+          campaigns: [], 
+          invitations: [],
+          user: null 
+        });
+      }
+    });
+  },
+
+  login: async (provider) => {
+    if (provider !== 'google') return;
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: any) {
+      if (error.code === 'auth/operation-not-allowed') {
+        const message = "Google Login is not enabled in your Firebase Console. Please enable it in the Authentication > Sign-in method tab.";
+        alert(message);
+      } else if (error.code === 'auth/popup-blocked') {
+        alert("The login popup was blocked by your browser. Please allow popups for this site.");
+      } else {
+        alert(`Login failed: ${error.message}`);
+      }
+      console.error('Login error:', error);
+    }
+  },
+
+  loginWithEmail: async (email, password) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      alert(`Login failed: ${error.message}`);
+      console.error('Email login error:', error);
+    }
+  },
+
+  signUpWithEmail: async (email, password, displayName) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName });
+    } catch (error: any) {
+      alert(`Sign up failed: ${error.message}`);
+      console.error('Email sign up error:', error);
+    }
+  },
+
+  logout: async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  },
+
+  createProject: async (name, description) => {
+    const user = get().user;
+    if (!user) return;
+
+    try {
+      const projectData = {
+        name,
+        description,
+        ownerId: user.uid,
+        members: [user.uid],
+        memberRoles: { [user.uid]: 'Admin' },
+        createdAt: serverTimestamp()
+      };
+      await addDoc(collection(db, 'projects'), projectData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'projects');
+    }
+  },
+
+  addPerformanceEntry: async (entry) => {
+    const { currentProjectId } = get();
+    const entryRef = doc(db, 'projects', currentProjectId, 'performanceEntries', entry.id);
+    await setDoc(entryRef, entry);
+    set((state) => ({ performanceEntries: [...state.performanceEntries, entry] }));
+  },
+  bulkAddPerformanceEntries: async (entries) => {
+    const { currentProjectId } = get();
+    const batch = writeBatch(db);
+    entries.forEach(entry => {
+      const entryRef = doc(db, 'projects', currentProjectId, 'performanceEntries', entry.id);
+      batch.set(entryRef, entry);
+    });
+    await batch.commit();
+    set((state) => ({ performanceEntries: [...state.performanceEntries, ...entries] }));
+  },
+  updatePerformanceEntry: async (id, updates) => {
+    const { currentProjectId } = get();
+    const entryRef = doc(db, 'projects', currentProjectId, 'performanceEntries', id);
+    await updateDoc(entryRef, updates);
+    set((state) => ({
+      performanceEntries: state.performanceEntries.map(e => e.id === id ? { ...e, ...updates } : e)
+    }));
+  },
+  deletePerformanceEntry: async (id) => {
+    const { currentProjectId } = get();
+    const entryRef = doc(db, 'projects', currentProjectId, 'performanceEntries', id);
+    await deleteDoc(entryRef);
+    set((state) => ({
+      performanceEntries: state.performanceEntries.filter(e => e.id !== id)
+    }));
+  },
+  acceptInvitation: async (id) => {
+    const user = get().user;
+    if (!user) return;
+
+    try {
+      const invRef = doc(db, 'invitations', id);
+      const invSnap = await getDoc(invRef);
+      if (!invSnap.exists()) return;
+
+      const invitation = invSnap.data() as Invitation;
+      const projectRef = doc(db, 'projects', invitation.projectId);
+      const projectSnap = await getDoc(projectRef);
+      
+      if (projectSnap.exists()) {
+        const projectData = projectSnap.data() as Project;
+        await updateDoc(projectRef, {
+          members: [...(projectData.members || []), user.uid],
+          memberRoles: { ...(projectData.memberRoles || {}), [user.uid]: invitation.role }
+        });
+        await updateDoc(invRef, { status: 'accepted' });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'invitations');
+    }
+  },
+
+  joinProjectByToken: async (token) => {
+    const user = get().user;
+    if (!user) {
+      throw new Error('Please log in to join the project.');
+    }
+
+    try {
+      const q = query(collection(db, 'invitations'), where('token', '==', token), where('status', '==', 'pending'));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        throw new Error('Invalid or expired invitation link.');
+      }
+
+      const invDoc = querySnapshot.docs[0];
+      const invitation = invDoc.data() as Invitation;
+
+      // Check if user email matches (optional, but more secure if we want to enforce)
+      // if (invitation.email !== user.email) {
+      //   throw new Error('This invitation was sent to a different email address.');
+      // }
+
+      const projectRef = doc(db, 'projects', invitation.projectId);
+      const projectSnap = await getDoc(projectRef);
+      
+      if (!projectSnap.exists()) {
+        throw new Error('The project no longer exists.');
+      }
+
+      const projectData = projectSnap.data() as Project;
+      
+      // Add user to project
+      await updateDoc(projectRef, {
+        members: [...(projectData.members || []), user.uid],
+        memberRoles: { ...(projectData.memberRoles || {}), [user.uid]: invitation.role }
+      });
+
+      // Update invitation status
+      await updateDoc(invDoc.ref, { status: 'accepted' });
+
+      // Update local state
+      set({ currentProjectId: invitation.projectId });
+      
+      get().addNotification({
+        id: `notif-${Date.now()}`,
+        taskId: '',
+        message: `Successfully joined ${invitation.teamName}!`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        type: 'system'
+      });
+    } catch (error) {
+      console.error('Join project error:', error);
+      throw error;
+    }
+  },
+
+  addTeamComment: async (text) => {
+    const { currentProjectId, user, userProfile, projects } = get();
+    if (!currentProjectId || !user) return;
+    const project = projects.find(p => p.id === currentProjectId);
+    if (!project) return;
+
+    try {
+      const comment: Omit<TeamComment, 'id'> = {
+        projectId: currentProjectId,
+        userId: user.uid,
+        userName: userProfile?.displayName || user.displayName || 'Anonymous',
+        userRole: project.memberRoles?.[user.uid] || (user.uid === project.ownerId ? 'Admin' : 'Member'),
+        userAvatar: userProfile?.photoURL || user.photoURL || `https://picsum.photos/seed/${user.uid}/100/100`,
+        userHandle: `@${(userProfile?.displayName || user.displayName || 'user').replace(/\s+/g, '')}`,
+        text,
+        timestamp: new Date().toISOString()
+      };
+      await addDoc(collection(db, 'projects', currentProjectId, 'comments'), comment);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `projects/${currentProjectId}/comments`);
+    }
+  },
+
+  updateTeamComment: async (id, text) => {
+    const { currentProjectId } = get();
+    if (!currentProjectId) return;
+    try {
+      await updateDoc(doc(db, 'projects', currentProjectId, 'comments', id), { text });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${currentProjectId}/comments/${id}`);
+    }
+  },
+
+  deleteTeamComment: async (id) => {
+    const { currentProjectId } = get();
+    if (!currentProjectId) return;
+    try {
+      await deleteDoc(doc(db, 'projects', currentProjectId, 'comments', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `projects/${currentProjectId}/comments/${id}`);
+    }
+  }
+}));
