@@ -17,12 +17,13 @@ import {
   Download,
   CheckCircle2,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { useStore } from '../store';
 import { KPI, Campaign, Region, PerformanceEntry } from '../types';
-import { REGIONS } from '../constants';
 import { cn } from '../lib/utils';
 
 export const PerformanceTracker: React.FC = () => {
@@ -33,14 +34,22 @@ export const PerformanceTracker: React.FC = () => {
     addPerformanceEntry, 
     updatePerformanceEntry, 
     deletePerformanceEntry,
-    customers
+    bulkAddPerformanceEntries,
+    customers,
+    setActiveScreen,
+    setSelectedKpiId: setGlobalKpiId,
+    setSelectedCampaignId: setGlobalCampaignId,
+    regions,
+    currentProjectId
   } = useStore();
 
   const [selectedKpiId, setSelectedKpiId] = useState<string>('');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [isAddingEntry, setIsAddingEntry] = useState(false);
+  const [isSyncingPowerBI, setIsSyncingPowerBI] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [regionFilter, setRegionFilter] = useState<Region | 'All'>('All');
+  const [typeFilter, setTypeFilter] = useState<string>('All');
 
   const [newEntry, setNewEntry] = useState<Partial<PerformanceEntry>>({
     date: new Date().toISOString().split('T')[0],
@@ -57,6 +66,40 @@ export const PerformanceTracker: React.FC = () => {
     subscribers: 0
   });
 
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        kpiId: 'kpi-1 (Required: ID of the KPI)',
+        campaignId: 'c1 (Required: ID of the Campaign)',
+        date: '2024-03-15 (YYYY-MM-DD)',
+        region: 'ASIA / NA / EU / LATAM',
+        country: 'South Korea (Optional)',
+        customer: 'Customer Name (Optional)',
+        revenue: '50000 (Required for ROI)',
+        cost: '15000 (Required for ROI)',
+        leads: '150',
+        mqls: '50',
+        sqls: '20',
+        customers: '5',
+        clicks: '1200',
+        impressions: '50000',
+        engagement: '300',
+        subscribers: '10'
+      }
+    ];
+
+    const csv = Papa.unparse(templateData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'performance_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const selectedKpi = useMemo(() => kpis.find(k => k.id === selectedKpiId), [kpis, selectedKpiId]);
   const linkedCampaigns = useMemo(() => {
     if (!selectedKpi) return [];
@@ -71,21 +114,27 @@ export const PerformanceTracker: React.FC = () => {
       const matchesRegion = regionFilter === 'All' || entry.region === regionFilter;
       const matchesKpi = !selectedKpiId || entry.kpiId === selectedKpiId;
       const matchesCampaign = !selectedCampaignId || entry.campaignId === selectedCampaignId;
-      return matchesSearch && matchesRegion && matchesKpi && matchesCampaign;
+      
+      const campaign = campaigns.find(c => c.id === entry.campaignId);
+      const matchesType = typeFilter === 'All' || campaign?.campaignType === typeFilter;
+
+      return matchesSearch && matchesRegion && matchesKpi && matchesCampaign && matchesType;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [performanceEntries, searchQuery, regionFilter, selectedKpiId, selectedCampaignId]);
+  }, [performanceEntries, searchQuery, regionFilter, selectedKpiId, selectedCampaignId, typeFilter, campaigns]);
 
   const handleAddEntry = async () => {
     if (!selectedKpiId || !selectedCampaignId) return;
 
     const entry: PerformanceEntry = {
       id: `perf-${Date.now()}`,
+      projectId: currentProjectId || 'p1',
       kpiId: selectedKpiId,
       campaignId: selectedCampaignId,
       date: newEntry.date || new Date().toISOString().split('T')[0],
       region: newEntry.region as Region,
       country: newEntry.country || '',
       customer: newEntry.customer || '',
+      value: Number(newEntry.value) || 0,
       revenue: Number(newEntry.revenue) || 0,
       cost: Number(newEntry.cost) || 0,
       leads: Number(newEntry.leads) || 0,
@@ -126,12 +175,14 @@ export const PerformanceTracker: React.FC = () => {
         for (const row of results.data as any[]) {
           const entry: PerformanceEntry = {
             id: `perf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            projectId: currentProjectId || 'p1',
             kpiId: row.kpiId || selectedKpiId,
             campaignId: row.campaignId || selectedCampaignId,
             date: row.date || new Date().toISOString().split('T')[0],
             region: (row.region as Region) || 'ASIA',
             country: row.country || '',
             customer: row.customer || '',
+            value: Number(row.value) || 0,
             revenue: Number(row.revenue) || 0,
             cost: Number(row.cost) || 0,
             leads: Number(row.leads) || 0,
@@ -143,12 +194,45 @@ export const PerformanceTracker: React.FC = () => {
             engagement: Number(row.engagement) || 0,
             subscribers: Number(row.subscribers) || 0,
           };
-          if (entry.kpiId && entry.campaignId) {
+          if (entry.kpiId && entry.campaignId && !entry.kpiId.includes('(Required')) {
             await addPerformanceEntry(entry);
           }
         }
       },
     });
+  };
+
+  const handleSyncPowerBI = async () => {
+    setIsSyncingPowerBI(true);
+    try {
+      const response = await fetch('/api/powerbi/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          kpis: kpis.map(k => k.id),
+          campaigns: campaigns.map(c => c.id)
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to sync with Power BI');
+      }
+      
+      const data = await response.json();
+      if (data.entries && data.entries.length > 0) {
+        await bulkAddPerformanceEntries(data.entries);
+        alert(`Successfully synced ${data.entries.length} performance entries from Power BI.`);
+      } else {
+        alert('No new entries found from Power BI.');
+      }
+    } catch (error) {
+      console.error('Power BI Sync Error:', error);
+      alert('Failed to sync with Power BI. Please check your connection and try again.');
+    } finally {
+      setIsSyncingPowerBI(false);
+    }
   };
 
   return (
@@ -162,6 +246,21 @@ export const PerformanceTracker: React.FC = () => {
           <p className="text-slate-500 dark:text-slate-400">Input and track performance results by KPI, Campaign, Region, and Customer.</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncPowerBI}
+            disabled={isSyncingPowerBI}
+            className="flex items-center gap-2 bg-[#F2C811] text-slate-900 px-4 py-2 rounded-xl font-bold shadow-lg shadow-[#F2C811]/20 hover:bg-[#F2C811]/90 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-4 h-4", isSyncingPowerBI && "animate-spin")} />
+            {isSyncingPowerBI ? 'Syncing...' : 'Sync Power BI'}
+          </button>
+          <button
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Template
+          </button>
           <label className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm">
             <Upload className="w-4 h-4" />
             Bulk Import (CSV)
@@ -223,7 +322,7 @@ export const PerformanceTracker: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-slate-900 dark:text-white text-sm"
                 >
                   <option value="All">All Regions</option>
-                  {REGIONS.map(r => (
+                  {regions.map(r => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
@@ -246,6 +345,22 @@ export const PerformanceTracker: React.FC = () => {
                     className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-4 py-2 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-sm"
                   />
                 </div>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <select 
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-sm font-bold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="All">All Campaign Types</option>
+                    <option value="Content">Content</option>
+                    <option value="Promotion">Promotion</option>
+                    <option value="Event">Event</option>
+                    <option value="Webinar">Webinar</option>
+                    <option value="ABM">ABM</option>
+                    <option value="Brand">Brand</option>
+                  </select>
+                </div>
               </div>
               <div className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                 {filteredEntries.length} Entries Found
@@ -258,6 +373,7 @@ export const PerformanceTracker: React.FC = () => {
                   <tr className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
                     <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">KPI / Campaign</th>
+                    <th className="px-6 py-4">Type</th>
                     <th className="px-6 py-4">Region / Country</th>
                     <th className="px-6 py-4">Customer</th>
                     <th className="px-6 py-4 text-right">Revenue</th>
@@ -282,15 +398,46 @@ export const PerformanceTracker: React.FC = () => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                            <button 
+                              onClick={() => {
+                                if (kpi) {
+                                  setGlobalKpiId(kpi.id);
+                                  setActiveScreen('kpi-details');
+                                }
+                              }}
+                              className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors text-left"
+                            >
                               <Target className="w-3 h-3 text-emerald-500" />
                               {kpi?.name || 'Unknown KPI'}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (campaign) {
+                                  setGlobalCampaignId(campaign.id);
+                                  setActiveScreen('campaign-details');
+                                }
+                              }}
+                              className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors text-left"
+                            >
                               <Megaphone className="w-3 h-3 text-slate-400" />
                               {campaign?.name || 'Unknown Campaign'}
-                            </div>
+                            </button>
+                            {entry.source === 'Power BI' && (
+                              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#F2C811]/10 text-[#F2C811] text-[9px] font-bold uppercase tracking-wider">
+                                <Database className="w-2.5 h-2.5" />
+                                Power BI
+                              </div>
+                            )}
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {campaign?.campaignType ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                              {campaign.campaignType}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">N/A</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-1">
@@ -342,7 +489,7 @@ export const PerformanceTracker: React.FC = () => {
                   })}
                   {filteredEntries.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
+                      <td colSpan={9} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <BarChart3 className="w-12 h-12 text-slate-200 dark:text-slate-800" />
                           <p className="text-slate-500 dark:text-slate-400 font-medium">No performance entries found.</p>
@@ -425,7 +572,7 @@ export const PerformanceTracker: React.FC = () => {
                         onChange={e => setNewEntry(prev => ({ ...prev, region: e.target.value as Region }))}
                         className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-slate-900 dark:text-white"
                       >
-                        {REGIONS.map(r => (
+                        {regions.map(r => (
                           <option key={r} value={r}>{r}</option>
                         ))}
                       </select>

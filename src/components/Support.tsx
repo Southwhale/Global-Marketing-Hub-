@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     question: "지역별 비용(Regional Cost)은 어디서 확인하나요?",
-    answer: "KPI 상세 페이지 하단에 'Regional Cost Breakdown' 섹션이 있습니다. 여기서 각 지역별로 할당된 비용을 입력하고 합계를 확인할 수 있습니다."
+    answer: "KPI 상세 페이지의 'Regional Cost Breakdown' 섹션에서 확인할 수 있습니다. 편집 모드에서는 글로벌 지역 목록을 직접 관리(추가, 수정, 삭제)하거나 특정 KPI에 필요한 지역만 선택하여 비용을 입력할 수 있습니다."
   },
   {
     question: "다크모드 설정은 어떻게 하나요?",

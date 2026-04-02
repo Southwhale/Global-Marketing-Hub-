@@ -3,7 +3,6 @@ import { X, ChevronDown, ChevronRight, MapPin, Building2 } from 'lucide-react';
 import { Region } from '../types';
 import { useStore } from '../store';
 import { cn } from '../lib/utils';
-import { REGIONS } from '../constants';
 
 interface RegionCustomerSelectProps {
   selectedRegions: string[];
@@ -12,7 +11,7 @@ interface RegionCustomerSelectProps {
 }
 
 export function RegionCustomerSelect({ selectedRegions = [], selectedCustomers = [], onChange }: RegionCustomerSelectProps) {
-  const { customers } = useStore();
+  const { customers, regions } = useStore();
   const [isOpen, setIsOpen] = useState(false);
   const [expandedRegions, setExpandedRegions] = useState<Record<string, boolean>>({});
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -36,7 +35,7 @@ export function RegionCustomerSelect({ selectedRegions = [], selectedCustomers =
     return acc;
   }, {} as Record<string, typeof customers>);
 
-  const allRegions = Array.from(new Set([...REGIONS, ...Object.keys(regionsMap)])).sort();
+  const allRegions = Array.from(new Set([...regions, ...Object.keys(regionsMap)])).sort();
 
   const toggleRegion = (region: string) => {
     setExpandedRegions(prev => ({ ...prev, [region]: !prev[region] }));

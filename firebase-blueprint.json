@@ -87,11 +87,23 @@
         "id": { "type": "string" },
         "projectId": { "type": "string" },
         "name": { "type": "string" },
+        "owners": { "type": "array", "items": { "type": "string" } },
         "statement": { "type": "string" },
         "targets": { "type": "object" },
+        "monthlyTargets": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Monthly targets, e.g., { '2024-01': 100 }"
+        },
+        "yearlyTarget": { "type": "number" },
         "unit": { "type": "string" },
         "pillar": { "type": "string" },
         "theme": { "type": "string" },
+        "campaigns": { "type": "array", "items": { "type": "string" } },
+        "tasks": { "type": "array", "items": { "type": "string" } },
+        "defaultBudget": { "type": "number" },
+        "defaultTargetRevenue": { "type": "number" },
+        "historicalPerformance": { "type": "array", "items": { "type": "number" } },
         "regionalCost": { "type": "object" }
       },
       "required": ["id", "projectId", "name"]
@@ -108,9 +120,41 @@
         "budget": { "type": "number" },
         "spent": { "type": "number" },
         "roi": { "type": "number" },
+        "q4Target": { "type": "number" },
+        "q4Actual": { "type": "number" },
+        "targetRevenue": { "type": "number" },
+        "actualRevenue": { "type": "number" },
+        "regionalRevenue": { "type": "object" },
+        "regionalCost": { "type": "object" },
+        "regionalLeads": { "type": "object" },
+        "regionalMqls": { "type": "object" },
+        "regionalSqls": { "type": "object" },
+        "regionalCustomers": { "type": "object" },
         "startDate": { "type": "string", "format": "date" },
         "endDate": { "type": "string", "format": "date" },
-        "channel": { "type": "string" }
+        "regions": { "type": "array", "items": { "type": "string" } },
+        "currency": { "type": "string" },
+        "exchangeRate": { "type": "number" },
+        "channel": { "type": "string" },
+        "campaignType": { "type": "string" },
+        "pipelineValue": { "type": "number" },
+        "opportunityValue": { "type": "number" },
+        "leads": { "type": "number" },
+        "mqls": { "type": "number" },
+        "sqls": { "type": "number" },
+        "opportunities": { "type": "number" },
+        "mqlRate": { "type": "number" },
+        "sqlRate": { "type": "number" },
+        "opportunityRate": { "type": "number" },
+        "costPerMql": { "type": "number" },
+        "impressions": { "type": "number" },
+        "clicks": { "type": "number" },
+        "socialMetrics": { "type": "object" },
+        "promotionMetrics": { "type": "object" },
+        "exhibitionMetrics": { "type": "object" },
+        "posMetrics": { "type": "object" },
+        "contentsMetrics": { "type": "object" },
+        "performanceOverTime": { "type": "array" }
       },
       "required": ["id", "projectId", "name"]
     },
@@ -157,6 +201,7 @@
         "region": { "type": "string" },
         "country": { "type": "string" },
         "date": { "type": "string", "format": "date" },
+        "value": { "type": "number", "description": "Generic value for KPI tracking" },
         "revenue": { "type": "number" },
         "cost": { "type": "number" },
         "leads": { "type": "number" },
@@ -166,10 +211,28 @@
         "clicks": { "type": "number" },
         "impressions": { "type": "number" },
         "engagement": { "type": "number" },
-        "subscribers": { "type": "number" }
+        "subscribers": { "type": "number" },
+        "views": { "type": "number" },
+        "reach": { "type": "number" },
+        "ctr": { "type": "number" },
+        "cpc": { "type": "number" },
+        "cpm": { "type": "number" }
       },
       "required": ["id", "campaignId", "kpiId", "region", "date"]
-    }
+    },
+    "Settings": {
+      "title": "Global Settings",
+      "description": "Global application settings like regions list.",
+      "type": "object",
+      "properties": {
+        "list": { 
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of global regions."
+        }
+      },
+      "required": ["list"]
+    },
     "TeamComment": {
       "title": "Team Comment",
       "description": "A comment left by a team member in the team section.",
@@ -186,6 +249,55 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "projectId", "userId", "text", "timestamp"]
+    },
+    "Lead": {
+      "title": "Campaign Lead",
+      "description": "A lead generated from a marketing campaign.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "company": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "contacted", "qualified", "unqualified"] },
+        "value": { "type": "number" },
+        "region": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "projectId", "name"]
+    },
+    "B2BCustomer": {
+      "title": "B2B Customer",
+      "description": "A customer converted from a lead.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "industry": { "type": "string" },
+        "region": { "type": "string" },
+        "totalValue": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "churned"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "projectId", "name"]
+    },
+    "Notification": {
+      "title": "User Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "taskId": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["task", "campaign", "system"] }
+      },
+      "required": ["id", "message", "timestamp"]
     }
   },
   "firestore": {
@@ -224,6 +336,22 @@
     "/projects/{projectId}/performanceEntries/{entryId}": {
       "schema": "PerformanceEntry",
       "description": "Manual performance tracking entries."
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Campaign leads."
+    },
+    "/customers/{customerId}": {
+      "schema": "B2BCustomer",
+      "description": "Converted customers."
+    },
+    "/users/{uid}/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications."
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Global application settings."
     }
   }
 }

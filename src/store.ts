@@ -69,6 +69,7 @@ interface AppState {
   invitations: Invitation[];
   notifications: Notification[];
   customers: B2BCustomer[];
+  regions: Region[];
   crmConfig: CRMConfig;
   supportTickets: SupportTicket[];
   performanceEntries: PerformanceEntry[];
@@ -108,8 +109,10 @@ interface AppState {
   setProjectWidgets: (projectId: string, widgets: DashboardWidget[]) => void;
   setKpis: (kpis: KPI[]) => void;
   updateKpi: (id: string, updates: Partial<KPI>) => Promise<void>;
-  addKpi: (kpi: KPI) => void;
-  deleteKpi: (id: string) => void;
+  addKpi: (kpi: KPI) => Promise<void>;
+  deleteKpi: (id: string) => Promise<void>;
+  bulkAddKpis: (kpis: KPI[]) => Promise<void>;
+  bulkDeleteKpis: (ids: string[]) => Promise<void>;
   updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
   deleteCampaign: (id: string) => void;
   addTask: (task: Task) => void;
@@ -126,6 +129,10 @@ interface AppState {
   bulkAddCustomers: (customers: B2BCustomer[]) => void;
   updateCustomer: (id: string, updates: Partial<B2BCustomer>) => void;
   deleteCustomer: (id: string) => void;
+  bulkDeleteCustomers: (ids: string[]) => void;
+  addRegion: (region: Region) => Promise<void>;
+  updateRegion: (oldRegion: Region, newRegion: Region) => Promise<void>;
+  deleteRegion: (region: Region) => Promise<void>;
   setCRMConfig: (config: Partial<CRMConfig>) => Promise<void>;
   setTheme: (theme: 'light' | 'dark') => Promise<void>;
   setLanguage: (lang: string) => Promise<void>;
@@ -163,162 +170,19 @@ export const useStore = create<AppState>((set, get) => ({
       isPublic: true
     }
   ],
-  currentProjectId: 'p1',
-  kpis: [
-    {
-      id: 'kpi-digital-01',
-      projectId: 'p1',
-      name: 'Digital Channel Performance',
-      owners: ['tm1'],
-      statement: 'Maximize ROI and subscriber growth across all digital channels.',
-      targets: { q1: 300, q2: 350, q3: 400, q4: 450 },
-      unit: '%',
-      pillar: 'Growth',
-      theme: 'Digital Transformation',
-      campaigns: ['c1', 'c2'],
-      regionalCost: { ASIA: 50000, KOREA: 30000, EU: 40000, NA: 60000 } as any
-    }
-  ],
-  campaigns: [
-    {
-      id: 'c1',
-      projectId: 'p1',
-      name: 'Global Launch 2024',
-      status: 'active',
-      roi: 320,
-      budget: 50000,
-      spent: 42000,
-      actualRevenue: 180000,
-      startDate: '2024-01-01',
-      endDate: '2024-12-31',
-      regions: ['ASIA', 'EU', 'NA'],
-      channel: 'LinkedIn',
-      campaignType: 'Brand',
-      leads: 1200,
-      mqls: 450,
-      sqls: 180,
-      opportunities: 45,
-      regionalRevenue: { ASIA: 60000, EU: 50000, NA: 70000 } as any,
-      regionalCost: { ASIA: 15000, EU: 12000, NA: 15000 } as any,
-      currency: 'USD',
-      exchangeRate: 1,
-      clicks: 25000,
-      impressions: 500000,
-      socialMetrics: { engagement: 12000, followers: 5000, shares: 1500, subscribers: 2500 },
-    },
-    {
-      id: 'c2',
-      projectId: 'p1',
-      name: 'Product Expansion',
-      status: 'paused',
-      roi: 180,
-      budget: 30000,
-      spent: 28000,
-      actualRevenue: 78000,
-      startDate: '2024-02-01',
-      endDate: '2024-08-31',
-      regions: ['LATAM', 'CIS'],
-      channel: 'Google Ads',
-      campaignType: 'Promotion',
-      leads: 800,
-      mqls: 300,
-      sqls: 120,
-      opportunities: 30,
-      regionalRevenue: { LATAM: 40000, CIS: 38000 } as any,
-      regionalCost: { LATAM: 15000, CIS: 13000 } as any,
-      currency: 'USD',
-      exchangeRate: 1,
-      clicks: 45000,
-      impressions: 1200000,
-      socialMetrics: { engagement: 8000, followers: 2000, shares: 500, subscribers: 1200 },
-    },
-    {
-      id: 'c3',
-      projectId: 'p1',
-      name: 'SteerStar 리포지셔닝',
-      status: 'active',
-      roi: 245,
-      budget: 45000,
-      spent: 38000,
-      q4Target: 150000,
-      q4Actual: 135000,
-      actualRevenue: 135000,
-      startDate: '2024-09-01',
-      endDate: '2024-12-31',
-      regions: ['ASIA', 'KOREA'],
-      channel: 'Instagram',
-      campaignType: 'Brand',
-      leads: 950,
-      mqls: 320,
-      sqls: 140,
-      opportunities: 28,
-      regionalRevenue: { ASIA: 85000, KOREA: 50000 } as any,
-      regionalCost: { ASIA: 25000, KOREA: 13000 } as any,
-      currency: 'USD',
-      exchangeRate: 1,
-      clicks: 65000,
-      impressions: 2500000,
-      socialMetrics: { engagement: 45000, followers: 15000, shares: 8000, subscribers: 5500 },
-      performanceOverTime: [
-        { period: 8, revenue: 15000, spend: 8000, mqls: 80, sqls: 30, opportunityValue: 20000 },
-        { period: 9, revenue: 35000, spend: 10000, mqls: 120, sqls: 45, opportunityValue: 45000 },
-        { period: 10, revenue: 45000, spend: 10000, mqls: 150, sqls: 60, opportunityValue: 55000 },
-        { period: 11, revenue: 40000, spend: 10000, mqls: 130, sqls: 50, opportunityValue: 50000 },
-      ]
-    }
-  ],
+  currentProjectId: '',
+  kpis: [],
+  campaigns: [],
   tasks: [],
   leads: [],
   teamMembers: [],
   invitations: [],
   notifications: [],
-  customers: [
-    { id: 'cust1', companyName: 'Global Tech Corp', industry: 'Technology', region: 'ASIA', country: 'Singapore', contactPerson: 'John Doe', email: 'john@globaltech.com', phone: '+65 1234 5678', status: 'active', tier: 'Enterprise', totalRevenue: 500000 },
-    { id: 'cust2', companyName: 'Samsung Electronics', industry: 'Electronics', region: 'KOREA', country: 'South Korea', contactPerson: 'Lee Min-ho', email: 'minho@samsung.com', phone: '+82 10 1234 5678', status: 'active', tier: 'Enterprise', totalRevenue: 1200000 },
-    { id: 'cust3', companyName: 'Hyundai Motors', industry: 'Automotive', region: 'KOREA', country: 'South Korea', contactPerson: 'Park Seo-joon', email: 'seojoon@hyundai.com', phone: '+82 10 8765 4321', status: 'active', tier: 'Enterprise', totalRevenue: 800000 }
-  ],
+  customers: [],
   supportTickets: [],
   teamComments: [],
-  performanceEntries: [
-    {
-      id: 'perf-1',
-      campaignId: 'c1',
-      kpiId: 'kpi-digital-01',
-      customer: 'Global Tech Corp',
-      region: 'ASIA',
-      country: 'Singapore',
-      date: '2024-03-01',
-      revenue: 25000,
-      cost: 5000,
-      leads: 150,
-      mqls: 60,
-      sqls: 25,
-      customers: 5,
-      clicks: 5000,
-      impressions: 100000,
-      engagement: 2500,
-      subscribers: 450
-    },
-    {
-      id: 'perf-2',
-      campaignId: 'c3',
-      kpiId: 'kpi-digital-01',
-      customer: 'Samsung Electronics',
-      region: 'KOREA',
-      country: 'South Korea',
-      date: '2024-03-15',
-      revenue: 45000,
-      cost: 8000,
-      leads: 300,
-      mqls: 120,
-      sqls: 50,
-      customers: 12,
-      clicks: 12000,
-      impressions: 350000,
-      engagement: 8500,
-      subscribers: 1200
-    }
-  ],
+  regions: REGIONS,
+  performanceEntries: [],
   crmConfig: { provider: 'Dynamics365', connected: false },
   activeScreen: 'dashboard',
   selectedCampaignId: null,
@@ -365,13 +229,25 @@ export const useStore = create<AppState>((set, get) => ({
       await updateDoc(userRef, { powerBIConfig: { ...get().powerBIConfig, ...config } });
     }
   },
-  updateLead: (id, updates) => set((state) => ({
-    leads: state.leads.map(l => l.id === id ? { ...l, ...updates } : l)
-  })),
+  updateLead: async (id, updates) => {
+    set((state) => ({
+      leads: state.leads.map(l => l.id === id ? { ...l, ...updates } : l)
+    }));
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'leads', id), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `leads/${id}`);
+      }
+    }
+  },
   setDashboardFilters: (filters) => set((state) => ({ 
     dashboardFilters: { ...state.dashboardFilters, ...filters } 
   })),
   setProjectWidgets: async (projectId, widgets) => {
+    if (!projectId) return;
+    
     const { user, userProfile, projects } = get();
     set((state) => ({
       projectWidgets: { ...state.projectWidgets, [projectId]: widgets }
@@ -393,6 +269,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setKpis: (kpis) => set({ kpis }),
   updateKpi: async (id, updates) => {
+    if (!id) return;
     set((state) => ({
       kpis: state.kpis.map(k => k.id === id ? { ...k, ...updates } : k)
     }));
@@ -405,8 +282,59 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
   },
-  addKpi: (kpi) => set((state) => ({ kpis: [...state.kpis, kpi] })),
-  deleteKpi: (id) => set((state) => ({ kpis: state.kpis.filter(k => k.id !== id) })),
+  addKpi: async (kpi) => {
+    const { user } = get();
+    if (user) {
+      try {
+        await setDoc(doc(db, 'kpis', kpi.id), kpi);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `kpis/${kpi.id}`);
+      }
+    }
+    set((state) => ({ kpis: [...state.kpis, kpi] }));
+  },
+  deleteKpi: async (id) => {
+    if (!id) return;
+    const { user } = get();
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'kpis', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `kpis/${id}`);
+      }
+    }
+    set((state) => ({ kpis: state.kpis.filter(k => k.id !== id) }));
+  },
+  bulkAddKpis: async (kpis) => {
+    const { user } = get();
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        kpis.forEach(kpi => {
+          batch.set(doc(db, 'kpis', kpi.id), kpi);
+        });
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `kpis (bulk)`);
+      }
+    }
+    set((state) => ({ kpis: [...state.kpis, ...kpis] }));
+  },
+  bulkDeleteKpis: async (ids) => {
+    const { user } = get();
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        ids.forEach(id => {
+          batch.delete(doc(db, 'kpis', id));
+        });
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `kpis (bulk)`);
+      }
+    }
+    set((state) => ({ kpis: state.kpis.filter(k => !ids.includes(k.id)) }));
+  },
   updateCampaign: async (id, updates) => {
     set((state) => ({
       campaigns: state.campaigns.map(c => c.id === id ? { ...c, ...updates } : c)
@@ -424,17 +352,20 @@ export const useStore = create<AppState>((set, get) => ({
     campaigns: state.campaigns.filter(c => c.id !== id)
   })),
   addTask: async (task) => {
-    set((state) => ({ tasks: [...state.tasks, task] }));
+    const { currentProjectId } = get();
+    const taskWithProject = { ...task, projectId: currentProjectId || '' };
+    set((state) => ({ tasks: [...state.tasks, taskWithProject] }));
     const { user } = get();
     if (user) {
       try {
-        await setDoc(doc(db, 'tasks', task.id), task);
+        await setDoc(doc(db, 'tasks', task.id), taskWithProject);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `tasks/${task.id}`);
       }
     }
   },
   updateTask: async (taskId, updates) => {
+    if (!taskId) return;
     set((state) => ({
       tasks: state.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
     }));
@@ -448,6 +379,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   deleteTask: async (taskId) => {
+    if (!taskId) return;
     set((state) => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
     const { user } = get();
     if (user) {
@@ -458,15 +390,51 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
   },
-  addNotification: (notification) => set((state) => ({
-    notifications: [notification, ...state.notifications]
-  })),
-  markNotificationRead: (id) => set((state) => ({
-    notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
-  })),
-  markAllNotificationsRead: () => set((state) => ({
-    notifications: state.notifications.map(n => ({ ...n, read: true }))
-  })),
+  addNotification: async (notification) => {
+    const { user } = get();
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'notifications', notification.id), notification);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}/notifications/${notification.id}`);
+      }
+    }
+    set((state) => ({
+      notifications: [notification, ...state.notifications]
+    }));
+  },
+  markNotificationRead: async (id) => {
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid, 'notifications', id), { read: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}/notifications/${id}`);
+      }
+    }
+    set((state) => ({
+      notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+    }));
+  },
+  markAllNotificationsRead: async () => {
+    const { user, notifications } = get();
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        notifications.forEach(n => {
+          if (!n.read) {
+            batch.update(doc(db, 'users', user.uid, 'notifications', n.id), { read: true });
+          }
+        });
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}/notifications (bulk)`);
+      }
+    }
+    set((state) => ({
+      notifications: state.notifications.map(n => ({ ...n, read: true }))
+    }));
+  },
   addTeamMember: (member) => set((state) => ({ teamMembers: [...state.teamMembers, member] })),
   inviteTeamMember: async (email, role) => {
     const { currentProjectId, projects, userProfile } = get();
@@ -533,12 +501,205 @@ export const useStore = create<AppState>((set, get) => ({
       handleFirestoreError(error, OperationType.UPDATE, `projects/${currentProjectId}`);
     }
   },
-  addCustomer: (customer) => set((state) => ({ customers: [...state.customers, customer] })),
-  bulkAddCustomers: (newCustomers) => set((state) => ({ customers: [...state.customers, ...newCustomers] })),
-  updateCustomer: (id, updates) => set((state) => ({
-    customers: state.customers.map(c => c.id === id ? { ...c, ...updates } : c)
-  })),
-  deleteCustomer: (id) => set((state) => ({ customers: state.customers.filter(c => c.id !== id) })),
+  addCustomer: async (customer) => {
+    const { currentProjectId, user } = get();
+    const customerWithProject = { ...customer, projectId: currentProjectId || '' };
+    if (user) {
+      try {
+        await setDoc(doc(db, 'customers', customer.id), customerWithProject);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `customers/${customer.id}`);
+      }
+    }
+    set((state) => ({ customers: [...state.customers, customerWithProject] }));
+  },
+  bulkAddCustomers: async (newCustomers) => {
+    const { currentProjectId, user } = get();
+    const customersWithProject = newCustomers.map(c => ({ ...c, projectId: currentProjectId || '' }));
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        customersWithProject.forEach(c => {
+          batch.set(doc(db, 'customers', c.id), c);
+        });
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `customers (bulk)`);
+      }
+    }
+    set((state) => ({ customers: [...state.customers, ...customersWithProject] }));
+  },
+  updateCustomer: async (id, updates) => {
+    set((state) => ({
+      customers: state.customers.map(c => c.id === id ? { ...c, ...updates } : c)
+    }));
+    const { user } = get();
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'customers', id), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `customers/${id}`);
+      }
+    }
+  },
+  deleteCustomer: async (id) => {
+    set((state) => ({ customers: state.customers.filter(c => c.id !== id) }));
+    const { user } = get();
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'customers', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `customers/${id}`);
+      }
+    }
+  },
+  bulkDeleteCustomers: async (ids) => {
+    set((state) => ({ customers: state.customers.filter(c => !ids.includes(c.id)) }));
+    const { user } = get();
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        ids.forEach(id => {
+          batch.delete(doc(db, 'customers', id));
+        });
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `customers (bulk)`);
+      }
+    }
+  },
+  
+  addRegion: async (region) => {
+    const { regions, user } = get();
+    if (regions.includes(region)) return;
+    const newRegions = [...regions, region];
+    set({ regions: newRegions });
+    if (user) {
+      try {
+        await setDoc(doc(db, 'settings', 'regions'), { list: newRegions });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'settings/regions');
+      }
+    }
+  },
+
+  updateRegion: async (oldRegion, newRegion) => {
+    const { regions, user, kpis, campaigns } = get();
+    const newRegions = regions.map(r => r === oldRegion ? newRegion : r);
+    set({ regions: newRegions });
+    
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        
+        // Update global regions list
+        batch.set(doc(db, 'settings', 'regions'), { list: newRegions });
+        
+        // Update all KPIs
+        kpis.forEach(kpi => {
+          if (kpi.regionalCost && kpi.regionalCost[oldRegion] !== undefined) {
+            const newCost = { ...kpi.regionalCost };
+            newCost[newRegion] = newCost[oldRegion];
+            delete newCost[oldRegion];
+            batch.update(doc(db, 'kpis', kpi.id), { regionalCost: newCost });
+          }
+        });
+        
+        // Update all Campaigns
+        campaigns.forEach(campaign => {
+          let updated = false;
+          const updates: any = {};
+          
+          if (campaign.regions?.includes(oldRegion)) {
+            updates.regions = campaign.regions.map(r => r === oldRegion ? newRegion : r);
+            updated = true;
+          }
+          
+          if (campaign.regionalRevenue && campaign.regionalRevenue[oldRegion] !== undefined) {
+            const newRev = { ...campaign.regionalRevenue };
+            newRev[newRegion] = newRev[oldRegion];
+            delete newRev[oldRegion];
+            updates.regionalRevenue = newRev;
+            updated = true;
+          }
+          
+          if (campaign.regionalCost && campaign.regionalCost[oldRegion] !== undefined) {
+            const newCost = { ...campaign.regionalCost };
+            newCost[newRegion] = newCost[oldRegion];
+            delete newCost[oldRegion];
+            updates.regionalCost = newCost;
+            updated = true;
+          }
+          
+          if (updated) {
+            batch.update(doc(db, 'campaigns', campaign.id), updates);
+          }
+        });
+        
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'update region (cascade)');
+      }
+    }
+  },
+
+  deleteRegion: async (region) => {
+    const { regions, user, kpis, campaigns } = get();
+    const newRegions = regions.filter(r => r !== region);
+    set({ regions: newRegions });
+    
+    if (user) {
+      try {
+        const batch = writeBatch(db);
+        
+        // Update global regions list
+        batch.set(doc(db, 'settings', 'regions'), { list: newRegions });
+        
+        // Remove from all KPIs
+        kpis.forEach(kpi => {
+          if (kpi.regionalCost && kpi.regionalCost[region] !== undefined) {
+            const newCost = { ...kpi.regionalCost };
+            delete newCost[region];
+            batch.update(doc(db, 'kpis', kpi.id), { regionalCost: newCost });
+          }
+        });
+        
+        // Remove from all Campaigns
+        campaigns.forEach(campaign => {
+          let updated = false;
+          const updates: any = {};
+          
+          if (campaign.regions?.includes(region)) {
+            updates.regions = campaign.regions.filter(r => r !== region);
+            updated = true;
+          }
+          
+          if (campaign.regionalRevenue && campaign.regionalRevenue[region] !== undefined) {
+            const newRev = { ...campaign.regionalRevenue };
+            delete newRev[region];
+            updates.regionalRevenue = newRev;
+            updated = true;
+          }
+          
+          if (campaign.regionalCost && campaign.regionalCost[region] !== undefined) {
+            const newCost = { ...campaign.regionalCost };
+            delete newCost[region];
+            updates.regionalCost = newCost;
+            updated = true;
+          }
+          
+          if (updated) {
+            batch.update(doc(db, 'campaigns', campaign.id), updates);
+          }
+        });
+        
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'delete region (cascade)');
+      }
+    }
+  },
+
   setCRMConfig: async (config) => {
     set((state) => ({ crmConfig: { ...state.crmConfig, ...config } }));
     const { user } = get();
@@ -627,8 +788,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCurrentProjectId: (id) => {
     set({ currentProjectId: id });
-    const user = get().user;
-    if (!id) return;
+    const { user } = get();
+    if (!id || !user) return;
 
     // Sync KPIs for current project
     const kpisQuery = query(collection(db, 'kpis'), where('projectId', '==', id));
@@ -661,7 +822,7 @@ export const useStore = create<AppState>((set, get) => ({
             name: userData.displayName || userData.email || 'Anonymous',
             role: memberRoles[uid] || (uid === project.ownerId ? 'Admin' : 'Member'),
             lastActive: userData.lastActive ? new Date(userData.lastActive).toLocaleString() : 'Never',
-            status: 'active', // Default to active for now
+            status: 'active',
             avatar: userData.photoURL || `https://picsum.photos/seed/${uid}/100/100`
           });
         }
@@ -674,6 +835,36 @@ export const useStore = create<AppState>((set, get) => ({
     onSnapshot(commentsQuery, (snapshot) => {
       set({ teamComments: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamComment)) });
     }, (error) => handleFirestoreError(error, OperationType.LIST, `comments for ${id}`));
+
+    // Sync Tasks for current project
+    const tasksQuery = query(collection(db, 'tasks'), where('projectId', '==', id));
+    onSnapshot(tasksQuery, (snapshot) => {
+      set({ tasks: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `tasks for ${id}`));
+
+    // Sync Leads for current project
+    const leadsQuery = query(collection(db, 'leads'), where('projectId', '==', id));
+    onSnapshot(leadsQuery, (snapshot) => {
+      set({ leads: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `leads for ${id}`));
+
+    // Sync Customers for current project
+    const customersQuery = query(collection(db, 'customers'), where('projectId', '==', id));
+    onSnapshot(customersQuery, (snapshot) => {
+      set({ customers: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as B2BCustomer)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `customers for ${id}`));
+
+    // Sync Notifications for user
+    const notificationsQuery = query(collection(db, 'users', user.uid, 'notifications'));
+    onSnapshot(notificationsQuery, (snapshot) => {
+      set({ notifications: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `notifications for ${user.uid}`));
+
+    // Sync Performance Entries for current project
+    const performanceQuery = collection(db, 'projects', id, 'performanceEntries');
+    onSnapshot(performanceQuery, (snapshot) => {
+      set({ performanceEntries: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PerformanceEntry)) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `performanceEntries for ${id}`));
   },
 
   fetchProjectById: async (id) => {
@@ -710,6 +901,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateProject: async (id, updates) => {
+    if (!id) return;
     try {
       await updateDoc(doc(db, 'projects', id), updates);
       set((state) => ({
@@ -721,6 +913,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteProject: async (id) => {
+    if (!id) return;
     const { projects, currentProjectId, setCurrentProjectId } = get();
     try {
       await deleteDoc(doc(db, 'projects', id));
@@ -769,6 +962,16 @@ export const useStore = create<AppState>((set, get) => ({
             }
           }
         });
+
+        // Sync global regions
+        onSnapshot(doc(db, 'settings', 'regions'), (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data && data.list) {
+              set({ regions: data.list });
+            }
+          }
+        }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/regions'));
 
         await setDoc(userRef, {
           uid: user.uid,

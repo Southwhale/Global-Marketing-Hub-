@@ -1,8 +1,8 @@
 import { Region } from './types';
 
-export const REGIONS: Region[] = ['ASIA', 'MENA', 'EU', 'CIS', 'LATAM', 'NA', 'OCEANIA', 'RUS', 'GLOBAL', 'KOREA', 'VINA'];
+export const REGIONS: string[] = ['ASIA', 'MENA', 'EU', 'CIS', 'LATAM', 'NA', 'OCEANIA', 'RUS', 'GLOBAL', 'KOREA', 'VINA'];
 
-export const REGION_COLORS: Record<Region, string> = {
+export const REGION_COLORS: Record<string, string> = {
   'ASIA': '#10b981',
   'MENA': '#3b82f6',
   'EU': '#8b5cf6',

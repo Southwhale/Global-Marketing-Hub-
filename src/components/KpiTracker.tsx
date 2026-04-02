@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Papa from 'papaparse';
-import { Upload, Target, Plus, ChevronRight, ChevronDown, Calendar, Users, DollarSign, MessageSquare, Megaphone, Edit2, TrendingUp, ArrowRight, ExternalLink, ArrowUpRight, Trash2, X, AlertTriangle, Settings2 } from 'lucide-react';
+import { Upload, Target, Plus, ChevronRight, ChevronDown, Calendar, Users, DollarSign, MessageSquare, Megaphone, Edit2, TrendingUp, ArrowRight, ExternalLink, ArrowUpRight, Trash2, X, AlertTriangle, Settings2, Download, CheckCircle2, Clock, AlertCircle, Circle } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { useStore } from '../store';
+import { TeamMemberSelect } from './TeamMemberSelect';
+import { SingleMemberSelect } from './SingleMemberSelect';
 import { KPI, Task, Region, Screen } from '../types';
 import { cn } from '../lib/utils';
-import { REGIONS } from '../constants';
 
 const InlineEdit = ({ value, onChange, className, type = "text", placeholder = "" }: { value: string | number, onChange: (val: string) => void, className?: string, type?: string, placeholder?: string }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -106,10 +107,28 @@ export const KpiTracker: React.FC = () => {
     setSelectedKpiId,
     addKpi,
     deleteKpi,
-    currentProjectId
+    bulkAddKpis,
+    bulkDeleteKpis,
+    currentProjectId,
+    regions
   } = useStore();
 
   const [isAddingKpi, setIsAddingKpi] = useState(false);
+  const [selectedKpis, setSelectedKpis] = useState<string[]>([]);
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
+  const [csvData, setCsvData] = useState<any[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
+    name: '',
+    statement: '',
+    pillar: '',
+    theme: '',
+    unit: '',
+    targetQ1: '',
+    targetQ2: '',
+    targetQ3: '',
+    targetQ4: ''
+  });
   const [newKpiData, setNewKpiData] = useState({
     id: '',
     name: '',
@@ -117,7 +136,8 @@ export const KpiTracker: React.FC = () => {
     pillar: '',
     theme: '',
     unit: '%',
-    targets: { q1: 0, q2: 0, q3: 0, q4: 0 }
+    targets: { q1: 0, q2: 0, q3: 0, q4: 0 },
+    owners: [] as string[]
   });
   const [expandedPillars, setExpandedPillars] = useState<Record<string, boolean>>({});
   const [expandedThemes, setExpandedThemes] = useState<Record<string, boolean>>({});
@@ -152,32 +172,68 @@ export const KpiTracker: React.FC = () => {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const parsedKpis: KPI[] = results.data.map((row: any) => ({
-          id: row['KPI Key'],
-          name: row['KPI Name'],
-          owners: row['Owner(s)'] ? row['Owner(s)'].split(',').map((s: string) => s.trim()) : [],
-          statement: row['KPI Statement'],
-          targets: {
-            q1: Number(row['Q1 Target']) || 0,
-            q2: Number(row['Q2 Target']) || 0,
-            q3: Number(row['Q3 Target']) || 0,
-            q4: Number(row['Q4 Target']) || 0,
-          },
-          unit: row['Unit'],
-          pillar: row['Strategic Pillar'],
-          theme: row['Strategic Theme'],
-          projectId: currentProjectId || 'p1',
-          campaigns: campaigns.length > 0 ? [campaigns[0].id] : ['c1'],
-          historicalPerformance: [
-            Number(row['Q1 Actual']) || Math.floor(Math.random() * 50) + 50,
-            Number(row['Q2 Actual']) || Math.floor(Math.random() * 50) + 60,
-            Number(row['Q3 Actual']) || Math.floor(Math.random() * 50) + 70,
-            Number(row['Q4 Actual']) || Math.floor(Math.random() * 50) + 80,
-          ],
-        }));
-        setKpis(parsedKpis);
+        if (results.data.length > 0) {
+          const headers = Object.keys(results.data[0]);
+          setCsvHeaders(headers);
+          setCsvData(results.data);
+          
+          // Auto-guess mapping
+          const guessMapping: Record<string, string> = {
+            name: '', statement: '', pillar: '', theme: '', unit: '', targetQ1: '', targetQ2: '', targetQ3: '', targetQ4: ''
+          };
+          headers.forEach(h => {
+            const lower = h.toLowerCase();
+            if (lower.includes('name')) guessMapping.name = h;
+            else if (lower.includes('statement')) guessMapping.statement = h;
+            else if (lower.includes('pillar')) guessMapping.pillar = h;
+            else if (lower.includes('theme')) guessMapping.theme = h;
+            else if (lower.includes('unit')) guessMapping.unit = h;
+            else if (lower.includes('q1')) guessMapping.targetQ1 = h;
+            else if (lower.includes('q2')) guessMapping.targetQ2 = h;
+            else if (lower.includes('q3')) guessMapping.targetQ3 = h;
+            else if (lower.includes('q4')) guessMapping.targetQ4 = h;
+          });
+          setColumnMapping(guessMapping);
+          setIsMappingModalOpen(true);
+        }
       },
     });
+    // Reset input
+    event.target.value = '';
+  };
+
+  const handleImportMappedKpis = () => {
+    if (!columnMapping.name) {
+      alert("KPI Name column is required.");
+      return;
+    }
+
+    const newKpis: KPI[] = csvData.map((row) => {
+      const id = `KPI-${Math.floor(Math.random() * 10000)}`;
+      return {
+        id,
+        projectId: currentProjectId || 'p1',
+        name: row[columnMapping.name] || 'Unnamed KPI',
+        statement: columnMapping.statement ? row[columnMapping.statement] : 'Enter strategic statement here',
+        owners: ['Unassigned'],
+        targets: {
+          q1: columnMapping.targetQ1 ? Number(row[columnMapping.targetQ1]) || 0 : 0,
+          q2: columnMapping.targetQ2 ? Number(row[columnMapping.targetQ2]) || 0 : 0,
+          q3: columnMapping.targetQ3 ? Number(row[columnMapping.targetQ3]) || 0 : 0,
+          q4: columnMapping.targetQ4 ? Number(row[columnMapping.targetQ4]) || 0 : 0,
+        },
+        unit: columnMapping.unit ? row[columnMapping.unit] : '%',
+        pillar: columnMapping.pillar ? row[columnMapping.pillar] : 'Strategic Pillar',
+        theme: columnMapping.theme ? row[columnMapping.theme] : 'Strategic Theme',
+        campaigns: campaigns.length > 0 ? [campaigns[0].id] : [],
+        historicalPerformance: [0, 0, 0, 0]
+      };
+    });
+
+    bulkAddKpis(newKpis);
+    setIsMappingModalOpen(false);
+    setCsvData([]);
+    setCsvHeaders([]);
   };
 
   const togglePillar = (pillar: string) => setExpandedPillars(prev => ({ ...prev, [pillar]: !prev[pillar] }));
@@ -193,6 +249,7 @@ export const KpiTracker: React.FC = () => {
   const handleCreateTask = (kpiId: string, campaignId: string) => {
     const newTask: Task = {
       id: `task-${Date.now()}`,
+      projectId: currentProjectId,
       campaignId,
       kpiId,
       name: 'New Task',
@@ -200,7 +257,7 @@ export const KpiTracker: React.FC = () => {
       status: 'todo',
       budget: 0,
       spent: 0,
-      regionCosts: REGIONS.reduce((acc, r) => ({ ...acc, [r]: 0 }), {} as Record<Region, number>),
+      regionCosts: regions.reduce((acc, r) => ({ ...acc, [r]: 0 }), {} as Record<Region, number>),
       schedules: [],
       comments: [],
       description: ''
@@ -243,7 +300,8 @@ export const KpiTracker: React.FC = () => {
       pillar: '',
       theme: '',
       unit: '%',
-      targets: { q1: 0, q2: 0, q3: 0, q4: 0 }
+      targets: { q1: 0, q2: 0, q3: 0, q4: 0 },
+      owners: []
     });
   };
 
@@ -255,7 +313,8 @@ export const KpiTracker: React.FC = () => {
       pillar: kpi.pillar,
       theme: kpi.theme,
       unit: kpi.unit,
-      targets: { ...kpi.targets }
+      targets: { ...kpi.targets },
+      owners: kpi.owners || []
     });
     setIsAddingKpi(true);
   };
@@ -296,6 +355,18 @@ export const KpiTracker: React.FC = () => {
           <p className="text-slate-500 dark:text-slate-400">Upload CSV to track Pillars, Themes, Campaigns, and Tasks</p>
         </div>
         <div className="flex items-center gap-3">
+          {selectedKpis.length > 0 && (
+            <button
+              onClick={() => {
+                bulkDeleteKpis(selectedKpis);
+                setSelectedKpis([]);
+              }}
+              className="flex items-center gap-2 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 px-4 py-2 rounded-xl font-bold hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedKpis.length})
+            </button>
+          )}
           <button 
             onClick={() => setIsAddingKpi(true)}
             className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
@@ -303,6 +374,14 @@ export const KpiTracker: React.FC = () => {
             <Plus className="w-4 h-4" />
             Add KPI
           </button>
+          <a 
+            href="data:text/csv;charset=utf-8,KPI Name,KPI Statement,Strategic Pillar,Strategic Theme,Unit,Q1 Target,Q2 Target,Q3 Target,Q4 Target%0AExample KPI,Increase user retention,Growth,Retention,%,10,15,20,25" 
+            download="kpi_template.csv"
+            className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            Template
+          </a>
           <label className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all cursor-pointer">
             <Upload className="w-4 h-4" />
             Upload CSV
@@ -319,6 +398,21 @@ export const KpiTracker: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+            <input 
+              type="checkbox" 
+              checked={selectedKpis.length === kpis.length && kpis.length > 0}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedKpis(kpis.map(k => k.id));
+                } else {
+                  setSelectedKpis([]);
+                }
+              }}
+              className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Select All KPIs</span>
+          </div>
           {pillars.map(pillar => {
             const pillarKpis = kpis.filter(k => k.pillar === pillar);
             const themes = Array.from(new Set(pillarKpis.map(k => k.theme)));
@@ -354,11 +448,26 @@ export const KpiTracker: React.FC = () => {
                           {expandedThemes[theme] && (
                             <div className="pl-6 space-y-4 mt-2">
                               {themeKpis.map(kpi => (
-                                <div key={kpi.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
-                                  <div 
-                                    className="flex items-start justify-between cursor-pointer group/kpi"
-                                    onClick={() => toggleKpi(kpi.id)}
-                                  >
+                                <div key={kpi.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex items-start gap-4">
+                                  <div className="pt-1">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={selectedKpis.includes(kpi.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedKpis([...selectedKpis, kpi.id]);
+                                        } else {
+                                          setSelectedKpis(selectedKpis.filter(id => id !== kpi.id));
+                                        }
+                                      }}
+                                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <div 
+                                      className="flex items-start justify-between cursor-pointer group/kpi"
+                                      onClick={() => toggleKpi(kpi.id)}
+                                    >
                                     <div 
                                       className="relative group/resize"
                                       style={{ width: columnWidths.name }}
@@ -576,7 +685,10 @@ export const KpiTracker: React.FC = () => {
                                                   className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800 cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-900/50 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-sm hover:shadow-md"
                                                 >
                                                   <div className="flex items-center gap-3">
-                                                    <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                                    {task.status === 'completed' ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> :
+                                                     task.status === 'in-progress' ? <Clock className="w-4 h-4 text-blue-500" /> :
+                                                     task.status === 'delayed' ? <AlertCircle className="w-4 h-4 text-rose-500" /> :
+                                                     <div className="w-2 h-2 rounded-full bg-slate-400 shrink-0 mx-1" />}
                                                     <InlineEdit 
                                                       value={task.name}
                                                       onChange={val => updateTask(task.id, { name: val })}
@@ -584,14 +696,11 @@ export const KpiTracker: React.FC = () => {
                                                     />
                                                   </div>
                                                   <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                                                    <span className="flex items-center gap-1">
-                                                      <Users className="w-3 h-3"/> 
-                                                      <InlineEdit 
-                                                        value={task.owner}
-                                                        onChange={val => updateTask(task.id, { owner: val })}
-                                                        className="font-medium"
-                                                      />
-                                                    </span>
+                                                     <SingleMemberSelect 
+                                                       value={task.owner}
+                                                       onChange={val => updateTask(task.id, { owner: val })}
+                                                       className="min-w-[120px]"
+                                                     />
                                                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3"/> {task.schedules.length}</span>
                                                     <span className="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
                                                       <DollarSign className="w-3 h-3"/> 
@@ -628,6 +737,7 @@ export const KpiTracker: React.FC = () => {
                                       })}
                                     </div>
                                   )}
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -736,6 +846,15 @@ export const KpiTracker: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-1 ml-1">Owners</label>
+                <TeamMemberSelect
+                  selectedIds={newKpiData.owners}
+                  onChange={owners => setNewKpiData(prev => ({ ...prev, owners }))}
+                  placeholder="Select KPI owners..."
+                />
+              </div>
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
@@ -751,6 +870,80 @@ export const KpiTracker: React.FC = () => {
                 className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {newKpiData.id ? 'Save Changes' : 'Create KPI'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMappingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Map CSV Columns</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Match your CSV headers to KPI fields</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsMappingModalOpen(false)}
+                className="p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-4">
+                {[
+                  { key: 'name', label: 'KPI Name (Required)' },
+                  { key: 'statement', label: 'KPI Statement' },
+                  { key: 'pillar', label: 'Strategic Pillar' },
+                  { key: 'theme', label: 'Strategic Theme' },
+                  { key: 'unit', label: 'Unit (e.g., %, $)' },
+                  { key: 'targetQ1', label: 'Q1 Target' },
+                  { key: 'targetQ2', label: 'Q2 Target' },
+                  { key: 'targetQ3', label: 'Q3 Target' },
+                  { key: 'targetQ4', label: 'Q4 Target' },
+                ].map(field => (
+                  <div key={field.key} className="flex items-center gap-4">
+                    <div className="w-1/3 text-sm font-bold text-slate-700 dark:text-slate-300">
+                      {field.label}
+                    </div>
+                    <div className="flex-1">
+                      <select
+                        value={columnMapping[field.key] || ''}
+                        onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-900 dark:text-white"
+                      >
+                        <option value="">-- Ignore this field --</option>
+                        {csvHeaders.map(header => (
+                          <option key={header} value={header}>{header}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setIsMappingModalOpen(false)}
+                className="px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleImportMappedKpis}
+                disabled={!columnMapping.name}
+                className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Import {csvData.length} KPIs
               </button>
             </div>
           </div>

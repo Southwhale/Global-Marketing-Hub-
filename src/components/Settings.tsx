@@ -22,6 +22,7 @@ export const Settings: React.FC = () => {
     addCustomer, 
     updateCustomer, 
     deleteCustomer, 
+    bulkDeleteCustomers,
     bulkAddCustomers, 
     bulkAddPerformanceEntries,
     leads,
@@ -30,12 +31,21 @@ export const Settings: React.FC = () => {
     language,
     setLanguage,
     alertSettings,
-    setAlertSettings
+    setAlertSettings,
+    regions,
+    addRegion,
+    updateRegion,
+    deleteRegion,
+    currentProjectId
   } = useStore();
   const [isAddingCustomer, setIsAddingCustomer] = React.useState(false);
+  const [isAddingRegion, setIsAddingRegion] = React.useState(false);
+  const [editingRegion, setEditingRegion] = React.useState<string | null>(null);
+  const [newRegionName, setNewRegionName] = React.useState('');
   const [saveStatus, setSaveStatus] = React.useState<'idle' | 'saving' | 'saved'>('idle');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const perfFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [selectedCustomers, setSelectedCustomers] = React.useState<string[]>([]);
   const [newCustomer, setNewCustomer] = React.useState<Partial<B2BCustomer>>({
     status: 'active',
     region: 'NA'
@@ -45,38 +55,44 @@ export const Settings: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n');
-      const newCustomers: B2BCustomer[] = [];
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().replace(/,$/, ''), // Handle headers like "name,"
+      complete: async (results) => {
+        const newCustomers: B2BCustomer[] = [];
+        const timestamp = Date.now();
 
-      // Assume CSV format: Company Name, Buyer Code, Region, Industry
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const [companyName, buyerCode, region, industry] = line.split(',');
-        if (companyName && buyerCode) {
-          newCustomers.push({
-            id: `cl-csv-${Date.now()}-${i}`,
-            companyName: companyName.trim(),
-            buyerCode: buyerCode.trim(),
-            region: (region?.trim() as any) || 'NA',
-            industry: industry?.trim() || '',
-            status: 'active',
-            country: '',
-            revenue: 0,
-            employees: 0
-          });
+        for (let i = 0; i < results.data.length; i++) {
+          const row = results.data[i] as any;
+          
+          const companyName = row.name || row.companyName || row.Customer || '';
+          const buyerCode = row.buyercode || row.buyerCode || '';
+          
+          if (companyName || buyerCode) {
+            newCustomers.push({
+              id: `cl-csv-${timestamp}-${i}`,
+              companyName: companyName,
+              buyerCode: buyerCode,
+              region: (row.region as Region) || 'NA',
+              country: row.country || '',
+              revenue: Number(row.Amount || row.revenue) || 0,
+              quantity: Number(row.Quantity || row.quantity) || 0,
+              status: 'active',
+              industry: row.industry || '',
+              employees: 0
+            });
+          }
         }
-      }
 
-      if (newCustomers.length > 0) {
-        bulkAddCustomers(newCustomers);
-        alert(`Successfully imported ${newCustomers.length} customers from CSV.`);
-      }
-    };
-    reader.readAsText(file);
+        if (newCustomers.length > 0) {
+          await bulkAddCustomers(newCustomers);
+          alert(`Successfully imported ${newCustomers.length} customers from CSV.`);
+        } else {
+          alert("No valid records found. Please check the CSV format.");
+        }
+      },
+    });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
   
@@ -96,12 +112,14 @@ export const Settings: React.FC = () => {
           if (row.Region || row.region) {
             newEntries.push({
               id: `perf-bulk-${timestamp}-${i}`,
+              projectId: currentProjectId || 'p1',
               kpiId: row.KPI_ID || row.kpiId || 'manual-revenue',
               campaignId: row.Campaign_ID || row.campaignId || 'manual-revenue',
               date: row.Date || row.date || new Date().toISOString().split('T')[0],
               region: (row.Region || row.region || 'NA') as Region,
               country: row.Country || row.country || '',
               customer: row.Customer || row.customer || '',
+              value: Number(row.Value || row.value) || 0,
               revenue: Number(row.Revenue || row.revenue || row['Order Amount'] || row['오더 금액']) || 0,
               cost: Number(row.Cost || row.cost) || 0,
               leads: 0,
@@ -127,32 +145,44 @@ export const Settings: React.FC = () => {
     if (perfFileInputRef.current) perfFileInputRef.current.value = '';
   };
 
-  const handleSyncFromCRM = () => {
+  const [isSyncingCRM, setIsSyncingCRM] = React.useState(false);
+
+  const handleSyncFromCRM = async () => {
     if (!crmConfig.connected) {
       alert("Please connect Dynamics 365 CRM first.");
       return;
     }
 
-    const sqlLeads = leads.filter(l => l.status === 'SQL');
-    const newCustomersFromCRM = sqlLeads
-      .filter(l => !customers.some(c => c.companyName === l.company))
-      .map((l, i) => ({
-        id: `cl-crm-${Date.now()}-${i}`,
-        companyName: l.company,
-        buyerCode: `B-CRM-${l.id}`,
-        region: 'NA' as const,
-        industry: 'Unknown',
-        status: 'active' as const,
-        country: '',
-        revenue: 0,
-        employees: 0
-      }));
+    setIsSyncingCRM(true);
+    try {
+      const response = await fetch('/api/crm/sync', { method: 'POST' });
+      const data = await response.json();
 
-    if (newCustomersFromCRM.length > 0) {
-      bulkAddCustomers(newCustomersFromCRM);
-      alert(`Successfully synced ${newCustomersFromCRM.length} new customers from CRM.`);
-    } else {
-      alert("No new customers found in CRM to sync.");
+      if (!response.ok) {
+        alert(`CRM Sync Failed: ${data.error}\n${data.message || ''}`);
+        return;
+      }
+
+      if (data.customers && data.customers.length > 0) {
+        // Filter out customers that already exist by buyerCode or companyName
+        const newCustomers = data.customers.filter((c: any) => 
+          !customers.some(existing => existing.buyerCode === c.buyerCode || existing.companyName === c.companyName)
+        );
+
+        if (newCustomers.length > 0) {
+          bulkAddCustomers(newCustomers);
+          alert(`Successfully synced ${newCustomers.length} new customers from Dynamics 365 CRM.`);
+        } else {
+          alert("CRM sync successful, but no new customers were found to add.");
+        }
+      } else {
+        alert("No customers found in CRM.");
+      }
+    } catch (error) {
+      console.error("Error syncing from CRM:", error);
+      alert("Failed to connect to the CRM sync service. Please ensure the backend is running.");
+    } finally {
+      setIsSyncingCRM(false);
     }
   };
 
@@ -171,6 +201,19 @@ export const Settings: React.FC = () => {
       } as B2BCustomer);
       setIsAddingCustomer(false);
       setNewCustomer({ status: 'active', region: 'NA' });
+    }
+  };
+
+  const handleAddRegion = async () => {
+    if (newRegionName.trim()) {
+      if (editingRegion) {
+        await updateRegion(editingRegion, newRegionName.trim());
+      } else {
+        await addRegion(newRegionName.trim());
+      }
+      setIsAddingRegion(false);
+      setEditingRegion(null);
+      setNewRegionName('');
     }
   };
 
@@ -278,6 +321,25 @@ export const Settings: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                   <p className="text-sm text-slate-500">Manage customer information automatically or manually.</p>
                   <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        const headers = ['buyercode', 'name', 'region', 'country', 'Quantity', 'Amount'];
+                        const csvContent = headers.join(',') + '\n' + 
+                          '551-020,TAN CO INVESTMENT AND DEVELOPMENT JOINT,ASIA,VN,10197,40701.86\n' +
+                          '001-001,CTR VINA,ASIA,VN,0,0';
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.setAttribute('download', 'customer_template.csv');
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      Template
+                    </button>
                     <input 
                       type="file" 
                       ref={fileInputRef} 
@@ -289,15 +351,16 @@ export const Settings: React.FC = () => {
                       onClick={() => fileInputRef.current?.click()}
                       className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all"
                     >
-                      <Download className="w-4 h-4" />
+                      <Upload className="w-4 h-4" />
                       Bulk CSV
                     </button>
                     <button 
                       onClick={handleSyncFromCRM}
-                      className="flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all"
+                      disabled={isSyncingCRM}
+                      className="flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all disabled:opacity-50"
                     >
-                      <RefreshCw className="w-4 h-4" />
-                      Sync CRM
+                      <RefreshCw className={`w-4 h-4 ${isSyncingCRM ? 'animate-spin' : ''}`} />
+                      {isSyncingCRM ? 'Syncing...' : 'Sync CRM'}
                     </button>
                     <button 
                       onClick={() => setIsAddingCustomer(!isAddingCustomer)}
@@ -375,32 +438,178 @@ export const Settings: React.FC = () => {
                 )}
 
                 <div className="space-y-3">
-                  {customers.map(customer => (
-                    <div key={customer.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-slate-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900">{customer.companyName}</h4>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className="bg-slate-200 px-1.5 py-0.5 rounded font-mono">{customer.buyerCode}</span>
-                            <span>•</span>
-                            <span>{customer.region}</span>
-                            <span>•</span>
-                            <span>{customer.industry}</span>
-                          </div>
-                        </div>
+                  {customers.length > 0 && (
+                    <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl mb-2 border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedCustomers.length === customers.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCustomers(customers.map(c => c.id));
+                            } else {
+                              setSelectedCustomers([]);
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Select All</span>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {selectedCustomers.length > 0 && (
                         <button 
-                          onClick={() => deleteCustomer(customer.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          onClick={() => {
+                            // Using a custom modal or just proceeding since we can't use window.confirm easily in iframe, 
+                            // but for simplicity we'll just delete.
+                            bulkDeleteCustomers(selectedCustomers);
+                            setSelectedCustomers([]);
+                          }}
+                          className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 font-bold hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-1.5 rounded-lg transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
+                          Delete Selected ({selectedCustomers.length})
                         </button>
-                        <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                    {customers.map(customer => (
+                      <div key={customer.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 group">
+                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedCustomers.includes(customer.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedCustomers([...selectedCustomers, customer.id]);
+                              } else {
+                                setSelectedCustomers(selectedCustomers.filter(id => id !== customer.id));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                          />
+                          <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center flex-shrink-0">
+                            <Building2 className="w-5 h-5 text-slate-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-slate-900 dark:text-white truncate">{customer.companyName}</h4>
+                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
+                              <span className="bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-mono flex-shrink-0">{customer.buyerCode}</span>
+                              <span className="flex-shrink-0">•</span>
+                              <span className="truncate">{customer.region}</span>
+                              {customer.country && (
+                                <>
+                                  <span className="flex-shrink-0">•</span>
+                                  <span className="truncate">{customer.country}</span>
+                                </>
+                              )}
+                              {customer.revenue !== undefined && customer.revenue > 0 && (
+                                <>
+                                  <span className="flex-shrink-0">•</span>
+                                  <span className="truncate font-medium text-emerald-600 dark:text-emerald-400">${customer.revenue.toLocaleString()}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <button 
+                            onClick={() => deleteCustomer(customer.id)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                            title="Delete Customer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </AlertSection>
+
+            {/* Region Management Section */}
+            <AlertSection 
+              title="Region Management" 
+              icon={Globe}
+              color="text-indigo-600"
+              bg="bg-indigo-50 dark:bg-indigo-900/20"
+              description="Configure the default regions used across the dashboard and reports."
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-500">Add, modify, or delete regions for cost and revenue breakdown.</p>
+                  <button 
+                    onClick={() => {
+                      setIsAddingRegion(true);
+                      setEditingRegion(null);
+                      setNewRegionName('');
+                    }}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Region
+                  </button>
+                </div>
+
+                {isAddingRegion && (
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Region Name</label>
+                      <input 
+                        type="text" 
+                        className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="e.g. LATAM, MIDDLE EAST"
+                        value={newRegionName}
+                        onChange={(e) => setNewRegionName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button 
+                        onClick={() => {
+                          setIsAddingRegion(false);
+                          setEditingRegion(null);
+                          setNewRegionName('');
+                        }}
+                        className="px-4 py-2 text-slate-600 dark:text-slate-400 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={handleAddRegion}
+                        className="px-6 py-2 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                      >
+                        {editingRegion ? 'Update Region' : 'Save Region'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {regions.map((region) => (
+                    <div key={region} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center">
+                          <Globe className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <span className="font-bold text-slate-900 dark:text-white">{region}</span>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setEditingRegion(region);
+                            setNewRegionName(region);
+                            setIsAddingRegion(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-all"
+                        >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => deleteRegion(region)}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -563,27 +772,39 @@ export const Settings: React.FC = () => {
               description="Configure Dynamics 365 CRM synchronization and Power BI dashboard embedding."
             >
               <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center">
-                      <Database className="w-6 h-6 text-blue-600" />
+                <div className="flex flex-col gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center">
+                        <Database className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 dark:text-white">Microsoft Dynamics 365</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Sync leads, opportunities, and revenue data.</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white">Microsoft Dynamics 365</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Sync leads, opportunities, and revenue data.</p>
-                    </div>
+                    <button 
+                      onClick={() => setCRMConfig({ connected: !crmConfig.connected })}
+                      className={cn(
+                        "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                        crmConfig.connected 
+                          ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50" 
+                          : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/20"
+                      )}
+                    >
+                      {crmConfig.connected ? 'Connected' : 'Connect CRM'}
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => setCRMConfig({ connected: !crmConfig.connected })}
-                    className={cn(
-                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
-                      crmConfig.connected 
-                        ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50" 
-                        : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/20"
-                    )}
-                  >
-                    {crmConfig.connected ? 'Connected' : 'Connect CRM'}
-                  </button>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <p className="font-semibold mb-1">Configuration Required:</p>
+                    <p>To enable real data synchronization, please configure the following environment variables in your <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">.env</code> file:</p>
+                    <ul className="list-disc list-inside mt-1 space-y-0.5">
+                      <li><code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">DYNAMICS_365_TENANT_ID</code></li>
+                      <li><code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">DYNAMICS_365_CLIENT_ID</code></li>
+                      <li><code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">DYNAMICS_365_CLIENT_SECRET</code></li>
+                      <li><code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">DYNAMICS_365_URL</code> (e.g., https://ctr.crm5.dynamics.com)</li>
+                    </ul>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
@@ -607,6 +828,16 @@ export const Settings: React.FC = () => {
                   >
                     {powerBIConfig.connected ? 'Connected' : 'Connect Power BI'}
                   </button>
+                </div>
+                
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 text-sm text-blue-800 dark:text-blue-300">
+                  <p className="font-bold mb-1">Power BI Configuration Required</p>
+                  <p>To enable real Power BI synchronization, please configure the following environment variables in your <code className="bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 rounded">.env</code> file:</p>
+                  <ul className="list-disc list-inside mt-2 space-y-1 font-mono text-xs">
+                    <li>POWER_BI_WORKSPACE_ID</li>
+                    <li>POWER_BI_REPORT_ID</li>
+                  </ul>
+                  <p className="mt-2 text-xs opacity-80">Currently using mock data for demonstration purposes.</p>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-700">

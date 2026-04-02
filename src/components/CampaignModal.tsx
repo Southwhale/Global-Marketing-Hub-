@@ -3,7 +3,7 @@ import { X, Save, Globe, Target, DollarSign, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Campaign, Region } from '../types';
-import { REGIONS } from '../constants';
+import { useStore } from '../store';
 
 interface CampaignModalProps {
   isOpen: boolean;
@@ -13,6 +13,7 @@ interface CampaignModalProps {
 }
 
 export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+  const { regions } = useStore();
   const [formData, setFormData] = React.useState<Partial<Campaign>>({
     name: '',
     budget: 0,
@@ -114,7 +115,7 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, o
                     onChange={e => setFormData({...formData, regions: [e.target.value as Region]})}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
                   >
-                    {REGIONS.map(r => (
+                    {regions.map(r => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>

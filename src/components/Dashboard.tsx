@@ -1,7 +1,7 @@
 import React, { useState, useMemo, forwardRef } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie, Legend, LineChart, Line
+  BarChart, Bar, Cell, PieChart, Pie, Legend, LineChart, Line, LabelList, ComposedChart
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
@@ -14,7 +14,7 @@ import {
   Activity, Wallet, Database, Layout, Sparkles, CheckCircle2,
   Settings2, Eye, EyeOff, GripVertical, Calendar, MapPin,
   Zap, Share2, ShoppingBag, FileText, MoreVertical, Trash2, X,
-  Maximize2, Minimize2, Square, Move, AlertTriangle
+  Maximize2, Minimize2, Square, Move, AlertTriangle, ShoppingCart
 } from 'lucide-react';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
@@ -22,7 +22,7 @@ import { cn } from '../lib/utils';
 import { CohortAnalysis } from './CohortAnalysis';
 import { useStore } from '../store';
 import { Region, WidgetId, DashboardWidget, Campaign } from '../types';
-import { REGIONS, REGION_COLORS as regionColors } from '../constants';
+import { REGION_COLORS as regionColors } from '../constants';
 
 const SOCIAL_PLATFORMS = ['LinkedIn', 'YouTube', 'Meta', 'Social', 'Google Ads', 'Email', 'Webinar'];
 const PERIODS = ['All Time', 'This Year', 'This Quarter', 'Last 30 Days', 'Last 7 Days'];
@@ -37,14 +37,19 @@ const FUNNEL_TOOLTIPS: Record<string, string> = {
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: 'kpi-cards', title: 'Key Performance Indicators', visible: true, x: 0, y: 0, w: 12, h: 6 },
-  { id: 'regional-revenue-cost', title: 'Revenue by Region (CRM Integrated)', visible: true, x: 0, y: 6, w: 6, h: 12 },
-  { id: 'budget-allocation-execution', title: 'Cost Execution by Advertising Activity', visible: true, x: 6, y: 6, w: 6, h: 12 },
-  { id: 'campaign-performance', title: 'Campaign Performance Breakdown', visible: true, x: 0, y: 18, w: 12, h: 14 },
-  { id: 'regional-performance', title: 'Regional Performance Table', visible: true, x: 0, y: 32, w: 12, h: 12 },
-  { id: 'funnel-analysis', title: 'Leads Funnel Analysis', visible: true, x: 0, y: 44, w: 6, h: 12 },
-  { id: 'delayed-items', title: 'Delayed Campaigns & Tasks', visible: true, x: 6, y: 44, w: 6, h: 12 },
-  { id: 'digital-channel-analysis', title: 'Digital Channel KPI Analysis', visible: true, x: 0, y: 56, w: 12, h: 16 },
-  { id: 'regional-subscribers', title: 'Regional Subscriber Acquisition', visible: true, x: 0, y: 72, w: 12, h: 12 },
+  { id: 'powerbi-insights', title: 'Power BI Insights', visible: true, x: 0, y: 6, w: 12, h: 8 },
+  { id: 'crm-performance', title: 'CRM Insights (Dynamics 365)', visible: true, x: 0, y: 14, w: 12, h: 8 },
+  { id: 'regional-revenue-cost', title: 'Revenue by Region (CRM Integrated)', visible: true, x: 0, y: 22, w: 6, h: 12 },
+  { id: 'budget-allocation-execution', title: 'Cost Execution by Advertising Activity', visible: true, x: 6, y: 22, w: 6, h: 12 },
+  { id: 'campaign-performance', title: 'Campaign Performance Breakdown', visible: true, x: 0, y: 34, w: 12, h: 14 },
+  { id: 'regional-performance', title: 'Regional Performance Table', visible: true, x: 0, y: 48, w: 12, h: 12 },
+  { id: 'funnel-analysis', title: 'Leads Funnel Analysis', visible: true, x: 0, y: 60, w: 6, h: 12 },
+  { id: 'delayed-items', title: 'Delayed Campaigns & Tasks', visible: true, x: 6, y: 60, w: 6, h: 12 },
+  { id: 'digital-channel-analysis', title: 'Digital Channel KPI Analysis', visible: true, x: 0, y: 72, w: 12, h: 16 },
+  { id: 'regional-subscribers', title: 'Regional Subscriber Acquisition', visible: true, x: 0, y: 88, w: 12, h: 12 },
+  { id: 'regional-roi-breakdown', title: 'Regional ROI Performance', visible: true, x: 0, y: 100, w: 12, h: 12 },
+  { id: 'kpi-targets-performance', title: 'KPI Targets & Performance', visible: true, x: 0, y: 112, w: 12, h: 14 },
+  { id: 'team-member-kpi-progress', title: 'Team Member KPI Progress & Regional Sales', visible: true, x: 0, y: 126, w: 12, h: 14 },
 ];
 
 // --- Helper Components ---
@@ -104,6 +109,7 @@ const WidgetWrapper = forwardRef(({
   title, 
   children, 
   onRemove, 
+  onSettings,
   className,
   isCustomizing,
   isShared,
@@ -116,6 +122,7 @@ const WidgetWrapper = forwardRef(({
   title: string; 
   children: React.ReactNode; 
   onRemove?: () => void;
+  onSettings?: () => void;
   className?: string;
   isCustomizing?: boolean;
   isShared?: boolean;
@@ -148,6 +155,11 @@ const WidgetWrapper = forwardRef(({
         <h3 className="font-bold text-slate-900 dark:text-white text-sm">{title}</h3>
       </div>
       <div className="flex items-center gap-2">
+        {onSettings && !isShared && (
+          <button onClick={onSettings} className="text-slate-400 hover:text-emerald-500 transition-colors p-1">
+            <Settings2 className="w-4 h-4" />
+          </button>
+        )}
         {onRemove && !isShared && (
           <button onClick={onRemove} className="text-slate-400 hover:text-rose-500 transition-colors p-1">
             <EyeOff className="w-4 h-4" />
@@ -248,10 +260,12 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
     teamMembers,
     selectedCampaignId,
     setSelectedCampaignId,
+    setSelectedKpiId,
     setActiveScreen,
     kpis,
     performanceEntries,
-    updateProject
+    updateProject,
+    regions
   } = useStore();
 
   const currentProject = useMemo(() => 
@@ -283,6 +297,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
   };
 
   const [isCustomizing, setIsCustomizing] = useState(false);
+  const [configuringWidgetId, setConfiguringWidgetId] = useState<WidgetId | null>(null);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
@@ -387,6 +402,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['LinkedIn', 'YouTube', 'Meta', 'Social']);
   const [metricsGroupBy, setMetricsGroupBy] = useState<'region' | 'channel'>('channel');
   const [metricsPeriod, setMetricsPeriod] = useState<string>('All Time');
+  const [digitalChannelRegion, setDigitalChannelRegion] = useState<Region | 'All'>('All');
 
   const handleDeleteCampaign = (id: string) => {
     setDeleteConfirm(id);
@@ -421,24 +437,62 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
   }, [projectCampaigns, dashboardFilters, selectedCampaignId]);
 
   const projectKpis = useMemo(() => 
-    kpis.filter(k => k.projectId === currentProjectId),
-  [kpis, currentProjectId]);
+    kpis.filter(k => k.projectId === currentProjectId).map(kpi => {
+      const kpiTasks = tasks.filter(t => t.kpiId === kpi.id);
+      const kpiPerformanceEntries = performanceEntries.filter(e => e.kpiId === kpi.id);
+      
+      const taskBudget = kpiTasks.reduce((sum, t) => sum + (t.budget || 0), 0);
+      const taskSpent = kpiTasks.reduce((sum, t) => sum + (t.spent || 0) + (t.activityCost || 0) + (t.executionCost || 0), 0);
+      const taskRevenue = kpiTasks.reduce((sum, t) => sum + (t.actualRevenue || 0), 0);
+      
+      const performanceCost = kpiPerformanceEntries.reduce((sum, e) => sum + (e.cost || 0), 0);
+      const performanceValue = kpiPerformanceEntries.reduce((sum, e) => sum + (e.value || 0), 0);
+      
+      return {
+        ...kpi,
+        aggregatedBudget: kpi.defaultBudget || taskBudget,
+        aggregatedSpent: taskSpent + performanceCost,
+        aggregatedActual: taskRevenue + performanceValue
+      };
+    }),
+  [kpis, tasks, performanceEntries, currentProjectId]);
 
-  const totalSpend = filteredCampaigns.reduce((sum, c) => sum + (c.spent || 0), 0);
-  const totalRevenue = filteredCampaigns.reduce((sum, c) => sum + (c.actualRevenue || 0), 0);
+  const totalSpend = useMemo(() => {
+    const campaignSpend = filteredCampaigns.reduce((sum, c) => sum + (c.spent || 0), 0);
+    const taskSpend = tasks.filter(t => t.projectId === currentProjectId && (!selectedCampaignId || t.campaignId === selectedCampaignId))
+      .reduce((sum, t) => sum + (t.spent || 0) + (t.activityCost || 0) + (t.executionCost || 0), 0);
+    const performanceSpend = performanceEntries.filter(e => e.projectId === currentProjectId && (!selectedCampaignId || e.campaignId === selectedCampaignId))
+      .reduce((sum, e) => sum + (e.cost || 0), 0);
+    return campaignSpend + taskSpend + performanceSpend;
+  }, [filteredCampaigns, tasks, performanceEntries, currentProjectId, selectedCampaignId]);
+
+  const totalRevenue = useMemo(() => {
+    const campaignRevenue = filteredCampaigns.reduce((sum, c) => sum + (c.actualRevenue || 0), 0);
+    const taskRevenue = tasks.filter(t => t.projectId === currentProjectId && (!selectedCampaignId || t.campaignId === selectedCampaignId))
+      .reduce((sum, t) => sum + (t.actualRevenue || 0), 0);
+    const performanceRevenue = performanceEntries.filter(e => e.projectId === currentProjectId && (!selectedCampaignId || e.campaignId === selectedCampaignId))
+      .reduce((sum, e) => sum + (e.revenue || 0), 0);
+    return campaignRevenue + taskRevenue + performanceRevenue;
+  }, [filteredCampaigns, tasks, performanceEntries, currentProjectId, selectedCampaignId]);
+
   const avgRoi = totalSpend > 0 ? ((totalRevenue - totalSpend) / totalSpend) * 100 : 0;
   const activeCampaignsCount = filteredCampaigns.filter(c => c.status === 'active').length;
 
   // --- Widget Data Aggregation ---
 
   const regionalPerformanceData = useMemo(() => {
-    return REGIONS.map(region => {
+    const regionalWidget = dashboardWidgets.find(w => w.id === 'regional-performance');
+    const configRegions = regionalWidget?.config?.regions || regions;
+
+    return configRegions.map(region => {
       const campaignRevenue = filteredCampaigns.reduce((sum, c) => sum + (c.regionalRevenue?.[region] || 0), 0);
+      const taskRevenue = tasks.filter(t => t.projectId === currentProjectId && (!selectedCampaignId || t.campaignId === selectedCampaignId))
+        .reduce((sum, t) => sum + (t.regionalRevenue?.[region] || 0), 0);
       const performanceRevenue = performanceEntries
         .filter(e => e.region === region && (!selectedCampaignId || e.campaignId === selectedCampaignId))
         .reduce((sum, e) => sum + (e.revenue || 0), 0);
       
-      const revenue = campaignRevenue + performanceRevenue;
+      const revenue = campaignRevenue + taskRevenue + performanceRevenue;
 
       const campaignCost = filteredCampaigns.reduce((sum, c) => {
         if (c.regionalCost?.[region]) return sum + c.regionalCost[region];
@@ -447,11 +501,20 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         }
         return sum;
       }, 0);
+      const taskCost = tasks.filter(t => t.projectId === currentProjectId && (!selectedCampaignId || t.campaignId === selectedCampaignId))
+        .reduce((sum, t) => {
+          const totalTaskCost = (t.spent || 0) + (t.activityCost || 0) + (t.executionCost || 0);
+          if (t.regionCosts?.[region]) return sum + t.regionCosts[region];
+          if (t.regions?.includes(region)) {
+            return sum + (totalTaskCost / (t.regions?.length || 1));
+          }
+          return sum;
+        }, 0);
       const performanceCost = performanceEntries
         .filter(e => e.region === region && (!selectedCampaignId || e.campaignId === selectedCampaignId))
         .reduce((sum, e) => sum + (e.cost || 0), 0);
       
-      const cost = campaignCost + performanceCost;
+      const cost = campaignCost + taskCost + performanceCost;
       
       const campaignLeads = filteredCampaigns.reduce((sum, c) => sum + (c.regionalLeads?.[region] || 0), 0);
       const performanceLeads = performanceEntries
@@ -490,7 +553,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         customers,
         color: regionColors[region] 
       };
-    });
+    }).filter(d => d.revenue > 0 || d.cost > 0 || d.leads > 0 || d.mqls > 0 || d.sqls > 0 || d.customers > 0);
   }, [filteredCampaigns, performanceEntries, selectedCampaignId]);
 
   const regionalRevenueCostData = useMemo(() => {
@@ -526,6 +589,11 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
       const regionFilteredEntries = dashboardFilters.region === 'All'
         ? channelEntries
         : channelEntries.filter(e => e.region === dashboardFilters.region);
+
+      // If no campaigns or entries for this channel in the selected region, return null to filter out
+      if (regionFilteredCampaigns.length === 0 && regionFilteredEntries.length === 0) {
+        return null;
+      }
 
       // Simulate period filtering
       let periodMultiplier = 1;
@@ -578,8 +646,57 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         cpa: cpa.toFixed(2),
         roi: spend > 0 ? ((revenue - spend) / spend) * 100 : 0
       };
-    });
+    }).filter((d): d is NonNullable<typeof d> => d !== null);
   }, [filteredCampaigns, performanceEntries, dashboardFilters, campaigns]);
+
+  const teamMemberKpiData = useMemo(() => {
+    const taskOwners = Array.from(new Set(tasks.filter(t => t.projectId === currentProjectId).map(t => t.owner)));
+    
+    return taskOwners.map(ownerName => {
+      const ownerTasks = tasks.filter(t => t.projectId === currentProjectId && t.owner === ownerName);
+      const ownerKpiIds = Array.from(new Set(ownerTasks.map(t => t.kpiId).filter(Boolean)));
+      
+      let totalProgress = 0;
+      let kpiCount = 0;
+      
+      ownerKpiIds.forEach(kpiId => {
+        const kpi = kpis.find(k => k.id === kpiId);
+        if (kpi) {
+          const kpiTasks = tasks.filter(t => t.kpiId === kpiId);
+          const kpiEntries = performanceEntries.filter(e => e.kpiId === kpiId);
+          
+          const actual = kpiTasks.reduce((sum, t) => sum + (t.actualRevenue || 0), 0) + 
+                         kpiEntries.reduce((sum, e) => sum + (e.revenue || 0), 0);
+          
+          const target = kpi.yearlyTarget || (kpi.targets.q1 + kpi.targets.q2 + kpi.targets.q3 + kpi.targets.q4) || 1;
+          totalProgress += Math.min(100, (actual / target) * 100);
+          kpiCount++;
+        }
+      });
+      
+      const avgProgress = kpiCount > 0 ? totalProgress / kpiCount : 0;
+      
+      const regionalRevenue: Record<string, number> = {};
+      ownerTasks.forEach(t => {
+        if (t.regionalRevenue) {
+          Object.entries(t.regionalRevenue).forEach(([region, rev]) => {
+            regionalRevenue[region] = (regionalRevenue[region] || 0) + rev;
+          });
+        }
+      });
+      
+      const member = teamMembers.find(m => m.name === ownerName);
+      
+      return {
+        name: ownerName,
+        avatar: member?.avatar,
+        role: member?.role || 'External Owner',
+        progress: avgProgress,
+        regionalRevenue,
+        totalRevenue: Object.values(regionalRevenue).reduce((sum, r) => sum + r, 0)
+      };
+    }).sort((a, b) => b.progress - a.progress);
+  }, [tasks, kpis, currentProjectId, teamMembers, performanceEntries]);
 
   const budgetAllocationData = useMemo(() => {
     const channels = Array.from(new Set(projectCampaigns.map(c => c.channel)));
@@ -612,21 +729,14 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
   }, [projectCampaigns]);
 
   const regionalRoiData = useMemo(() => {
-    return filteredCampaigns.slice(0, 8).map(c => {
-      const dataPoint: any = { name: c.name };
-      REGIONS.forEach(region => {
-        if (c.regions?.includes(region)) {
-          const revenue = c.regionalRevenue?.[region] || 0;
-          const cost = c.regionalCost?.[region] || (c.spent / (c.regions?.length || 1));
-          const roi = cost > 0 ? ((revenue - cost) / cost) * 100 : 0;
-          dataPoint[region] = parseFloat(roi.toFixed(1));
-        } else {
-          dataPoint[region] = 0;
-        }
-      });
-      return dataPoint;
-    });
-  }, [filteredCampaigns]);
+    return [...regionalPerformanceData]
+      .sort((a, b) => b.roi - a.roi)
+      .map(d => ({
+        name: d.name,
+        roi: d.roi,
+        color: d.color
+      }));
+  }, [regionalPerformanceData]);
 
   const regionalFunnelData = useMemo(() => {
     const stages = [
@@ -637,7 +747,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
 
     return stages.map(stage => {
       const dataPoint: any = { name: stage.name };
-      REGIONS.forEach(region => {
+      regions.forEach(region => {
         let totalLeads = 0;
         let totalMqls = 0;
         let totalSqls = 0;
@@ -667,28 +777,80 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
   }, [filteredCampaigns]);
 
   const digitalChannelAnalysisData = useMemo(() => {
-    const digitalChannels = ['LinkedIn', 'YouTube', 'Meta', 'Social', 'Google Ads', 'Email', 'Webinar'];
+    const digitalChannels = ['LinkedIn', 'YouTube', 'Meta', 'Social', 'Google Ads', 'Email', 'Webinar', 'Instagram', 'TikTok'];
     return digitalChannels.map(channel => {
-      const channelCampaigns = filteredCampaigns.filter(c => c.channel === channel);
-      const spend = channelCampaigns.reduce((sum, c) => sum + (c.spent || 0), 0);
-      const revenue = channelCampaigns.reduce((sum, c) => sum + (c.actualRevenue || 0), 0);
-      const clicks = channelCampaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
-      const engagement = channelCampaigns.reduce((sum, c) => sum + (c.socialMetrics?.engagement || 0), 0);
+      const channelCampaigns = filteredCampaigns.filter(c => {
+        const matchesChannel = c.channel === channel;
+        const matchesRegion = digitalChannelRegion === 'All' || c.regions?.includes(digitalChannelRegion as Region);
+        return matchesChannel && matchesRegion;
+      });
+
+      // Also include performance entries that might be manually entered for these channels
+      const channelEntries = performanceEntries.filter(e => {
+        const campaign = campaigns.find(c => c.id === e.campaignId);
+        const matchesChannel = campaign?.channel === channel;
+        const matchesRegion = digitalChannelRegion === 'All' || e.region === digitalChannelRegion;
+        return matchesChannel && matchesRegion;
+      });
+
+      const spend = channelCampaigns.reduce((sum, c) => {
+        if (digitalChannelRegion === 'All') return sum + (c.spent || 0);
+        return sum + (c.regionalCost?.[digitalChannelRegion as Region] || 0);
+      }, 0) + channelEntries.reduce((sum, e) => sum + (e.cost || 0), 0);
+
+      const revenue = channelCampaigns.reduce((sum, c) => {
+        if (digitalChannelRegion === 'All') return sum + (c.actualRevenue || 0);
+        return sum + (c.regionalRevenue?.[digitalChannelRegion as Region] || 0);
+      }, 0) + channelEntries.reduce((sum, e) => sum + (e.revenue || 0), 0);
+
+      const clicks = channelCampaigns.reduce((sum, c) => {
+        if (digitalChannelRegion === 'All') return sum + (c.clicks || 0);
+        const weight = (c.regionalLeads?.[digitalChannelRegion as Region] || 0) / (c.leads || 1) || (1 / (c.regions?.length || 1));
+        return sum + Math.floor((c.clicks || 0) * weight);
+      }, 0) + channelEntries.reduce((sum, e) => sum + (e.clicks || 0), 0);
+
+      const impressions = channelCampaigns.reduce((sum, c) => {
+        if (digitalChannelRegion === 'All') return sum + (c.impressions || 0);
+        const weight = (c.regionalLeads?.[digitalChannelRegion as Region] || 0) / (c.leads || 1) || (1 / (c.regions?.length || 1));
+        return sum + Math.floor((c.impressions || 0) * weight);
+      }, 0) + channelEntries.reduce((sum, e) => sum + (e.impressions || 0), 0);
+
+      const engagement = channelCampaigns.reduce((sum, c) => {
+        if (digitalChannelRegion === 'All') return sum + (c.socialMetrics?.engagement || 0);
+        const weight = (c.regionalLeads?.[digitalChannelRegion as Region] || 0) / (c.leads || 1) || (1 / (c.regions?.length || 1));
+        return sum + Math.floor((c.socialMetrics?.engagement || 0) * weight);
+      }, 0) + channelEntries.reduce((sum, e) => sum + (e.engagement || 0), 0);
+
+      const views = channelCampaigns.reduce((sum, c) => sum + (c.views || 0), 0) + 
+                    channelEntries.reduce((sum, e) => sum + (e.views || 0), 0);
+      
+      const reach = channelCampaigns.reduce((sum, c) => sum + (c.reach || 0), 0) + 
+                    channelEntries.reduce((sum, e) => sum + (e.reach || 0), 0);
+
       const roi = spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
+      const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+      const cpc = clicks > 0 ? spend / clicks : 0;
+      const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
       
       return {
         name: channel,
         spend,
         revenue,
         clicks,
+        impressions,
         engagement,
-        roi
+        views,
+        reach,
+        roi,
+        ctr,
+        cpc,
+        cpm
       };
     });
-  }, [filteredCampaigns]);
+  }, [filteredCampaigns, performanceEntries, digitalChannelRegion, campaigns]);
 
   const regionalSubscribersData = useMemo(() => {
-    return REGIONS.map(region => {
+    return regions.map(region => {
       const subscribers = filteredCampaigns.reduce((sum, c) => {
         if (c.regions?.includes(region)) {
           const totalSubscribers = c.socialMetrics?.subscribers || 0;
@@ -703,11 +865,11 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         subscribers,
         color: regionColors[region]
       };
-    });
+    }).filter(d => d.subscribers > 0);
   }, [filteredCampaigns]);
 
   const socialMetricsData = useMemo(() => {
-    const groups = metricsGroupBy === 'region' ? REGIONS : selectedPlatforms;
+    const groups = metricsGroupBy === 'region' ? regions : selectedPlatforms;
     
     return groups.map(group => {
       let totalImpressions = 0;
@@ -827,7 +989,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
               icon={DollarSign} 
               trend="+12%" 
               color="emerald" 
-              data={[850000, 920000, 1100000, 1200000]}
+              data={[totalRevenue * 0.7, totalRevenue * 0.8, totalRevenue * 0.9, totalRevenue]}
             />
             <StatCard 
               title="Marketing ROI" 
@@ -835,7 +997,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
               icon={Target} 
               trend="+5%" 
               color="blue" 
-              data={[42, 48, 45, 55]}
+              data={[avgRoi * 0.8, avgRoi * 0.9, avgRoi * 0.95, avgRoi]}
             />
             <StatCard 
               title="Total Cost" 
@@ -843,7 +1005,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
               icon={Wallet} 
               trend="-8%" 
               color="indigo" 
-              data={[420000, 450000, 580000, 550000]}
+              data={[totalSpend * 0.8, totalSpend * 1.1, totalSpend * 1.05, totalSpend]}
             />
             <StatCard 
               title="Active Campaigns" 
@@ -851,10 +1013,119 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
               icon={TrendingUp} 
               trend="+2" 
               color="rose" 
-              data={[8, 10, 12, 14]}
+              data={[activeCampaignsCount - 4, activeCampaignsCount - 2, activeCampaignsCount - 1, activeCampaignsCount]}
             />
           </div>
         </WidgetWrapper>
+        );
+
+      case 'powerbi-insights':
+        const pbiEntries = performanceEntries.filter(e => e.source === 'Power BI');
+        const pbiRevenue = pbiEntries.reduce((sum, e) => sum + (e.revenue || 0), 0);
+        const pbiSpend = pbiEntries.reduce((sum, e) => sum + (e.cost || 0), 0);
+        const pbiLeads = pbiEntries.reduce((sum, e) => sum + (e.leads || 0), 0);
+
+        return (
+          <WidgetWrapper 
+            key="powerbi-insights" 
+            title={title}
+            isCustomizing={isCustomizing}
+            isShared={isShared}
+            onRemove={handleRemove}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard 
+                title="Power BI Revenue" 
+                value={`$${(pbiRevenue / 1000).toFixed(0)}K`} 
+                icon={Database} 
+                trend="+12%" 
+                color="emerald" 
+                data={[120000, 150000, 180000, pbiRevenue]}
+              />
+              <StatCard 
+                title="Power BI Spend" 
+                value={`$${(pbiSpend / 1000).toFixed(0)}K`} 
+                icon={Wallet} 
+                trend="-3%" 
+                color="indigo" 
+                data={[45000, 42000, 38000, pbiSpend]}
+              />
+              <StatCard 
+                title="Power BI Leads" 
+                value={pbiLeads.toString()} 
+                icon={Activity} 
+                trend="+8%" 
+                color="blue" 
+                data={[800, 950, 1100, pbiLeads]}
+              />
+            </div>
+          </WidgetWrapper>
+        );
+
+      case 'crm-performance':
+        const crmCustomers = customers.filter(c => c.buyerCode?.startsWith('CRM-') || c.buyerCode !== undefined);
+        const crmTotalRevenue = crmCustomers.reduce((sum, c) => sum + (c.revenue || 0), 0);
+        const crmTotalOrders = crmCustomers.reduce((sum, c) => sum + (c.quantity || 0), 0);
+        const crmActiveCustomers = crmCustomers.filter(c => c.status === 'active').length;
+
+        return (
+          <WidgetWrapper 
+            key="crm-performance" 
+            title={title}
+            isCustomizing={isCustomizing}
+            isShared={isShared}
+            onRemove={handleRemove}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">CRM Revenue</h4>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  ${(crmTotalRevenue / 1000000).toFixed(2)}M
+                </p>
+                <p className="text-sm text-emerald-600 mt-2 flex items-center gap-1">
+                  <TrendingUp className="w-4 h-4" />
+                  +8.4% from last quarter
+                </p>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                    <ShoppingCart className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">CRM Orders</h4>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {crmTotalOrders.toLocaleString()}
+                </p>
+                <p className="text-sm text-emerald-600 mt-2 flex items-center gap-1">
+                  <TrendingUp className="w-4 h-4" />
+                  +12.1% from last quarter
+                </p>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">Active CRM Customers</h4>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {crmActiveCustomers.toLocaleString()}
+                </p>
+                <p className="text-sm text-emerald-600 mt-2 flex items-center gap-1">
+                  <TrendingUp className="w-4 h-4" />
+                  +5.2% from last quarter
+                </p>
+              </div>
+            </div>
+          </WidgetWrapper>
         );
 
       case 'regional-revenue-cost':
@@ -981,6 +1252,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         );
 
       case 'campaign-performance':
+        const campaignMetrics = widget.config?.metrics || WIDGET_METRICS['campaign-performance'];
         return (
           <WidgetWrapper 
             ref={campaignPerformanceRef}
@@ -989,6 +1261,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
             isCustomizing={isCustomizing}
             isShared={isShared}
             onRemove={handleRemove}
+            onSettings={() => setConfiguringWidgetId('campaign-performance')}
           >
             <div className="overflow-x-auto -mx-6 h-full">
               <table className="w-full text-left table-fixed">
@@ -999,10 +1272,6 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                       <div 
                         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
                         onMouseDown={(e) => handleTableResize('campaign', 0, e)}
-                      />
-                      <div 
-                        className="absolute left-0 right-0 bottom-0 h-1 cursor-row-resize hover:bg-emerald-500/30 transition-colors opacity-0 group-hover/row-resize:opacity-100"
-                        onMouseDown={(e) => handleRowResize('campaign', e)}
                       />
                     </th>
                     <th style={{ width: tableColumnWidths.campaign[1] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider relative group/resize">
@@ -1019,27 +1288,33 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                         onMouseDown={(e) => handleTableResize('campaign', 2, e)}
                       />
                     </th>
-                    <th style={{ width: tableColumnWidths.campaign[3] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                      Cost
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                        onMouseDown={(e) => handleTableResize('campaign', 3, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.campaign[4] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                      ROI
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                        onMouseDown={(e) => handleTableResize('campaign', 4, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.campaign[5] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                      Revenue
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                        onMouseDown={(e) => handleTableResize('campaign', 5, e)}
-                      />
-                    </th>
+                    {campaignMetrics.includes('Spent') && (
+                      <th style={{ width: tableColumnWidths.campaign[3] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                        Spent
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                          onMouseDown={(e) => handleTableResize('campaign', 3, e)}
+                        />
+                      </th>
+                    )}
+                    {campaignMetrics.includes('ROI') && (
+                      <th style={{ width: tableColumnWidths.campaign[4] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                        ROI
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                          onMouseDown={(e) => handleTableResize('campaign', 4, e)}
+                        />
+                      </th>
+                    )}
+                    {campaignMetrics.includes('Revenue') && (
+                      <th style={{ width: tableColumnWidths.campaign[5] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                        Revenue
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                          onMouseDown={(e) => handleTableResize('campaign', 5, e)}
+                        />
+                      </th>
+                    )}
                     <th style={{ width: tableColumnWidths.campaign[6] }} className="px-6 py-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider relative group/resize">
                       Regions
                       <div 
@@ -1149,15 +1424,21 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                               {c.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-slate-100 text-right">
-                            ${(c.spent || 0).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right">
-                            {c.roi.toFixed(1)}%
-                          </td>
-                          <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-slate-100 text-right">
-                            ${totalRegRevenue.toLocaleString()}
-                          </td>
+                          {campaignMetrics.includes('Spent') && (
+                            <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-slate-100 text-right">
+                              ${(c.spent || 0).toLocaleString()}
+                            </td>
+                          )}
+                          {campaignMetrics.includes('ROI') && (
+                            <td className="px-6 py-4 text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right">
+                              {c.roi.toFixed(1)}%
+                            </td>
+                          )}
+                          {campaignMetrics.includes('Revenue') && (
+                            <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-slate-100 text-right">
+                              ${totalRegRevenue.toLocaleString()}
+                            </td>
+                          )}
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-1">
                               {c.regions.map(r => (
@@ -1453,6 +1734,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         );
 
       case 'channel-performance':
+        const channelMetrics = widget.config?.metrics || WIDGET_METRICS['channel-performance'];
         return (
           <WidgetWrapper 
             key="channel-performance" 
@@ -1460,6 +1742,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
             isCustomizing={isCustomizing}
             isShared={isShared}
             onRemove={handleRemove}
+            onSettings={() => setConfiguringWidgetId('channel-performance')}
           >
             <div className="flex flex-col h-full">
               <div className="flex flex-wrap items-center gap-4 mb-6 pb-4 border-b border-slate-50 dark:border-slate-800">
@@ -1486,7 +1769,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                     className="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border-none rounded-lg px-2 py-1 focus:ring-1 focus:ring-emerald-500/20"
                   >
                     <option value="All">All Regions</option>
-                    {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    {regions.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
 
@@ -1534,69 +1817,87 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                           onMouseDown={(e) => handleRowResize('channel', e)}
                         />
                       </th>
-                      <th style={{ width: tableColumnWidths.channel[1] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        Subscribers
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 1, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[2] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        Engagement
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 2, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[3] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        Eng. Rate
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 3, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[4] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        Leads
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 4, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[5] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        CTR
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 5, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[6] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        CPC
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 6, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[7] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        CPM
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 7, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[8] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        CPA
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 8, e)}
-                        />
-                      </th>
-                      <th style={{ width: tableColumnWidths.channel[9] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
-                        ROI
-                        <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
-                          onMouseDown={(e) => handleTableResize('channel', 9, e)}
-                        />
-                      </th>
+                      {channelMetrics.includes('Subscribers') && (
+                        <th style={{ width: tableColumnWidths.channel[1] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          Subscribers
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 1, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('Engagement') && (
+                        <th style={{ width: tableColumnWidths.channel[2] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          Engagement
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 2, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('Eng. Rate') && (
+                        <th style={{ width: tableColumnWidths.channel[3] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          Eng. Rate
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 3, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('Leads') && (
+                        <th style={{ width: tableColumnWidths.channel[4] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          Leads
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 4, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('CTR') && (
+                        <th style={{ width: tableColumnWidths.channel[5] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          CTR
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 5, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('CPC') && (
+                        <th style={{ width: tableColumnWidths.channel[6] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          CPC
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 6, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('CPM') && (
+                        <th style={{ width: tableColumnWidths.channel[7] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          CPM
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 7, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('CPA') && (
+                        <th style={{ width: tableColumnWidths.channel[8] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          CPA
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 8, e)}
+                          />
+                        </th>
+                      )}
+                      {channelMetrics.includes('ROI') && (
+                        <th style={{ width: tableColumnWidths.channel[9] }} className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right relative group/resize">
+                          ROI
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/30 transition-colors"
+                            onMouseDown={(e) => handleTableResize('channel', 9, e)}
+                          />
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
@@ -1615,22 +1916,40 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                             <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{row.channel}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.subscribers.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.engagement.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.engagementRate}%</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.leads}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.ctr}%</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpc}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpm}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpa}</td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={cn(
-                            "text-xs font-bold px-2 py-1 rounded-lg",
-                            row.roi > 0 ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400"
-                          )}>
-                            {row.roi > 0 ? '+' : ''}{row.roi.toFixed(0)}%
-                          </span>
-                        </td>
+                        {channelMetrics.includes('Subscribers') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.subscribers.toLocaleString()}</td>
+                        )}
+                        {channelMetrics.includes('Engagement') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.engagement.toLocaleString()}</td>
+                        )}
+                        {channelMetrics.includes('Eng. Rate') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.engagementRate}%</td>
+                        )}
+                        {channelMetrics.includes('Leads') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.leads}</td>
+                        )}
+                        {channelMetrics.includes('CTR') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">{row.ctr}%</td>
+                        )}
+                        {channelMetrics.includes('CPC') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpc}</td>
+                        )}
+                        {channelMetrics.includes('CPM') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpm}</td>
+                        )}
+                        {channelMetrics.includes('CPA') && (
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 text-right font-mono">${row.cpa}</td>
+                        )}
+                        {channelMetrics.includes('ROI') && (
+                          <td className="px-6 py-4 text-right">
+                            <span className={cn(
+                              "text-xs font-bold px-2 py-1 rounded-lg",
+                              row.roi > 0 ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400"
+                            )}>
+                              {row.roi > 0 ? '+' : ''}{row.roi.toFixed(0)}%
+                            </span>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1915,12 +2234,14 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
         );
 
       case 'regional-performance':
+        const displayMetrics = widget.config?.metrics || WIDGET_METRICS['regional-performance'];
         return (
           <WidgetWrapper 
             key="regional-performance" 
             title="Regional Performance Table" 
             widget={widget}
             onRemove={handleRemove}
+            onSettings={() => setConfiguringWidgetId('regional-performance')}
           >
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
@@ -1933,55 +2254,69 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                         onMouseDown={(e) => handleTableResize('regional', 0, e)}
                       />
                     </th>
-                    <th style={{ width: tableColumnWidths.regional[1] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      Revenue
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 1, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[2] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      Cost
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 2, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[3] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      ROI
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 3, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[4] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      Leads
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 4, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[5] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      MQLs
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 5, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[6] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      SQLs
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 6, e)}
-                      />
-                    </th>
-                    <th style={{ width: tableColumnWidths.regional[7] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
-                      Wins
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
-                        onMouseDown={(e) => handleTableResize('regional', 7, e)}
-                      />
-                    </th>
+                    {displayMetrics.includes('Revenue') && (
+                      <th style={{ width: tableColumnWidths.regional[1] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        Revenue
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 1, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('Cost') && (
+                      <th style={{ width: tableColumnWidths.regional[2] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        Cost
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 2, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('ROI') && (
+                      <th style={{ width: tableColumnWidths.regional[3] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        ROI
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 3, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('Leads') && (
+                      <th style={{ width: tableColumnWidths.regional[4] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        Leads
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 4, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('MQLs') && (
+                      <th style={{ width: tableColumnWidths.regional[5] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        MQLs
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 5, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('SQLs') && (
+                      <th style={{ width: tableColumnWidths.regional[6] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        SQLs
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 6, e)}
+                        />
+                      </th>
+                    )}
+                    {displayMetrics.includes('Wins') && (
+                      <th style={{ width: tableColumnWidths.regional[7] }} className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right relative group/resize">
+                        Wins
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 opacity-0 group-hover/resize:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleTableResize('regional', 7, e)}
+                        />
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -1993,32 +2328,46 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                           <span className="text-sm font-bold text-slate-700">{data.name}</span>
                         </div>
                       </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">${data.revenue.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">${data.cost.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className={cn(
-                          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold",
-                          data.roi > 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-                        )}>
-                          {data.roi > 0 ? '+' : ''}{data.roi.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">{data.leads.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">{data.mqls.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">{data.sqls.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm font-medium text-slate-600">{data.customers.toLocaleString()}</span>
-                      </td>
+                      {displayMetrics.includes('Revenue') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">${data.revenue.toLocaleString()}</span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('Cost') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">${data.cost.toLocaleString()}</span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('ROI') && (
+                        <td className="py-3 text-right">
+                          <span className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold",
+                            data.roi > 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                          )}>
+                            {data.roi > 0 ? '+' : ''}{data.roi.toFixed(1)}%
+                          </span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('Leads') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">{data.leads.toLocaleString()}</span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('MQLs') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">{data.mqls.toLocaleString()}</span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('SQLs') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">{data.sqls.toLocaleString()}</span>
+                        </td>
+                      )}
+                      {displayMetrics.includes('Wins') && (
+                        <td className="py-3 text-right">
+                          <span className="text-sm font-medium text-slate-600">{data.customers.toLocaleString()}</span>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -2038,7 +2387,15 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
           >
             <div className="h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={regionalRoiData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <BarChart 
+                  data={regionalRoiData} 
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                  onClick={(data) => {
+                    if (data && data.activeLabel) {
+                      setDashboardFilters({ ...dashboardFilters, region: data.activeLabel as Region });
+                    }
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="name" 
@@ -2053,22 +2410,36 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: '#64748b', fontSize: 12 }} 
-                    tickFormatter={(val) => `${val}%`} 
+                    tickFormatter={(val) => `${val.toFixed(1)}%`} 
                   />
                   <Tooltip 
                     cursor={{ fill: '#f8fafc' }}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'ROI']}
                   />
-                  <Legend verticalAlign="top" align="right" iconType="circle" />
-                  {REGIONS.map(region => (
-                    <Bar 
-                      key={region} 
-                      dataKey={region} 
-                      name={region} 
-                      fill={regionColors[region]} 
-                      radius={[4, 4, 0, 0]} 
+                  <Bar 
+                    dataKey="roi" 
+                    name="ROI" 
+                    radius={[4, 4, 0, 0]}
+                    className="cursor-pointer"
+                  >
+                    {regionalRoiData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.color || '#10b981'} 
+                        className={cn(
+                          "hover:opacity-80 transition-opacity",
+                          dashboardFilters.region === entry.name ? "stroke-emerald-500 stroke-2" : ""
+                        )}
+                      />
+                    ))}
+                    <LabelList 
+                      dataKey="roi" 
+                      position="top" 
+                      formatter={(val: number) => `${val.toFixed(1)}%`}
+                      style={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
                     />
-                  ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -2106,7 +2477,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                     />
                     <Legend verticalAlign="top" align="right" iconType="circle" />
-                    {REGIONS.map(region => (
+                    {regions.map(region => (
                       <Bar 
                         key={region} 
                         dataKey={region} 
@@ -2467,6 +2838,47 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
             onRemove={handleRemove}
           >
             <div className="h-full flex flex-col gap-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                    <Globe2 className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">Channel Performance</h4>
+                    <p className="text-[10px] text-slate-500">Cross-channel efficiency metrics</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <button
+                      onClick={() => setDigitalChannelRegion('All')}
+                      className={cn(
+                        "px-2 py-1 text-[10px] font-bold rounded-md transition-all",
+                        digitalChannelRegion === 'All' 
+                          ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm" 
+                          : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      )}
+                    >
+                      All
+                    </button>
+                    {regions.map(region => (
+                      <button
+                        key={region}
+                        onClick={() => setDigitalChannelRegion(region)}
+                        className={cn(
+                          "px-2 py-1 text-[10px] font-bold rounded-md transition-all",
+                          digitalChannelRegion === region 
+                            ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                        )}
+                      >
+                        {region}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-1/2">
                 <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Clicks & Engagement by Channel</h4>
@@ -2487,6 +2899,26 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                   </div>
                 </div>
                 <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Impressions & Reach by Channel</h4>
+                  <div className="flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={digitalChannelAnalysisData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600 }} />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 600 }} />
+                        <Bar dataKey="impressions" name="Impressions" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="reach" name="Reach" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-1/2">
+                <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">ROI by Digital Channel (%)</h4>
                   <div className="flex-1">
                     <ResponsiveContainer width="100%" height="100%">
@@ -2502,6 +2934,25 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                     </ResponsiveContainer>
                   </div>
                 </div>
+                <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">CTR & CPC Trends</h4>
+                  <div className="flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={digitalChannelAnalysisData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600 }} />
+                        <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600 }} />
+                        <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600 }} />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 600 }} />
+                        <Bar yAxisId="right" dataKey="cpc" name="CPC ($)" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                        <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR (%)" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6' }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-left">
@@ -2512,7 +2963,13 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                       <th className="pb-3 text-right">Revenue</th>
                       <th className="pb-3 text-right">ROI</th>
                       <th className="pb-3 text-right">Clicks</th>
-                      <th className="pb-3 text-right">Engagement</th>
+                      <th className="pb-3 text-right">Impr.</th>
+                      <th className="pb-3 text-right">CTR</th>
+                      <th className="pb-3 text-right">CPC</th>
+                      <th className="pb-3 text-right">CPM</th>
+                      <th className="pb-3 text-right">Engage</th>
+                      <th className="pb-3 text-right">Views</th>
+                      <th className="pb-3 text-right">Reach</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
@@ -2530,12 +2987,241 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                           </span>
                         </td>
                         <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">{d.clicks.toLocaleString()}</td>
+                        <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">{d.impressions.toLocaleString()}</td>
+                        <td className="py-3 text-xs font-bold text-blue-600 text-right">{d.ctr.toFixed(2)}%</td>
+                        <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">${d.cpc.toFixed(2)}</td>
+                        <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">${d.cpm.toFixed(2)}</td>
                         <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">{d.engagement.toLocaleString()}</td>
+                        <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">{d.views.toLocaleString()}</td>
+                        <td className="py-3 text-xs font-medium text-slate-600 dark:text-slate-400 text-right">{d.reach.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </div>
+          </WidgetWrapper>
+        );
+
+      case 'team-member-kpi-progress':
+        return (
+          <WidgetWrapper 
+            key="team-member-kpi-progress" 
+            title={title}
+            isCustomizing={isCustomizing}
+            isShared={isShared}
+            onRemove={handleRemove}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Team Member</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">KPI Progress</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Total Revenue</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Regional Sales Trend</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                  {teamMemberKpiData.map(member => (
+                    <tr key={member.name} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group">
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border-2 border-white dark:border-slate-800 shadow-sm">
+                            {member.avatar ? (
+                              <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">
+                                {member.name.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">{member.name}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{member.role}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex flex-col items-center gap-1.5 min-w-[120px]">
+                          <div className="flex items-center justify-between w-full">
+                            <span className={cn(
+                              "text-xs font-black",
+                              member.progress >= 100 ? "text-emerald-600" : member.progress >= 75 ? "text-blue-600" : "text-amber-600"
+                            )}>
+                              {member.progress.toFixed(1)}%
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium tracking-tight">Target Goal</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(100, member.progress)}%` }}
+                              className={cn(
+                                "h-full rounded-full transition-all duration-1000",
+                                member.progress >= 100 ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" : 
+                                member.progress >= 75 ? "bg-blue-500" : "bg-amber-500"
+                              )}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-sm font-black text-slate-900 dark:text-white">
+                            ${(member.totalRevenue || 0).toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">Total Contribution</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {Object.entries(member.regionalRevenue).length > 0 ? (
+                            <div className="flex flex-wrap justify-end gap-1 max-w-[200px]">
+                              {Object.entries(member.regionalRevenue)
+                                .sort((a, b) => b[1] - a[1])
+                                .slice(0, 3)
+                                .map(([region, revenue]) => (
+                                  <div 
+                                    key={region}
+                                    className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700"
+                                  >
+                                    <div 
+                                      className="w-1.5 h-1.5 rounded-full" 
+                                      style={{ backgroundColor: regionColors[region] || '#94a3b8' }} 
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">{region}</span>
+                                    <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                                      ${(revenue / 1000).toFixed(1)}k
+                                    </span>
+                                  </div>
+                                ))}
+                              {Object.entries(member.regionalRevenue).length > 3 && (
+                                <span className="text-[10px] text-slate-400 font-medium self-center ml-1">
+                                  +{Object.entries(member.regionalRevenue).length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">No regional data</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </WidgetWrapper>
+        );
+
+      case 'kpi-targets-performance':
+        return (
+          <WidgetWrapper 
+            key="kpi-targets-performance" 
+            title={title}
+            isCustomizing={isCustomizing}
+            isShared={isShared}
+            onRemove={handleRemove}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">KPI Name</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Q1 Target</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Q2 Target</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Q3 Target</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Q4 Target</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Yearly Target</th>
+                    <th className="py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Progress</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                  {projectKpis.map(kpi => {
+                    const progress = kpi.yearlyTarget && kpi.yearlyTarget > 0 
+                      ? (kpi.aggregatedActual / kpi.yearlyTarget) * 100 
+                      : 0;
+                    
+                    return (
+                      <tr key={kpi.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group">
+                        <td className="py-4 px-4">
+                          <div 
+                            className="flex items-center gap-3 cursor-pointer group/kpi"
+                            onClick={() => {
+                              setSelectedKpiId(kpi.id);
+                              setActiveScreen('kpi-details');
+                            }}
+                          >
+                            <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 group-hover/kpi:bg-emerald-200 dark:group-hover/kpi:bg-emerald-800/50 transition-colors">
+                              <Target className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover/kpi:text-emerald-600 transition-colors">{kpi.name}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400">{kpi.id} • {kpi.unit}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                            {(kpi.targets?.q1 || 0).toLocaleString()}
+                            {kpi.unit === '%' ? '%' : ''}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                            {(kpi.targets?.q2 || 0).toLocaleString()}
+                            {kpi.unit === '%' ? '%' : ''}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                            {(kpi.targets?.q3 || 0).toLocaleString()}
+                            {kpi.unit === '%' ? '%' : ''}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                            {(kpi.targets?.q4 || 0).toLocaleString()}
+                            {kpi.unit === '%' ? '%' : ''}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                            {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                            {(kpi.yearlyTarget || 0).toLocaleString()}
+                            {kpi.unit === '%' ? '%' : ''}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={cn(
+                              "text-xs font-black",
+                              progress >= 100 ? "text-emerald-600" : progress >= 75 ? "text-blue-600" : "text-amber-600"
+                            )}>
+                              {progress.toFixed(1)}%
+                            </span>
+                            <div className="w-24 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(100, progress)}%` }}
+                                className={cn(
+                                  "h-full rounded-full",
+                                  progress >= 100 ? "bg-emerald-500" : progress >= 75 ? "bg-blue-500" : "bg-amber-500"
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </WidgetWrapper>
         );
@@ -2672,7 +3358,7 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
                 className="text-sm font-bold text-slate-700 bg-slate-50 border-none rounded-xl px-4 py-2 focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="All">All Regions</option>
-                {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                {regions.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
 
@@ -2907,6 +3593,22 @@ export const Dashboard: React.FC<{ isShared?: boolean }> = ({ isShared = false }
           }
         </ResponsiveGridLayout>
       </div>
+      <AnimatePresence>
+        {configuringWidgetId && (
+          <WidgetConfigModal 
+            widget={dashboardWidgets.find(w => w.id === configuringWidgetId)!}
+            onClose={() => setConfiguringWidgetId(null)}
+            onUpdate={(config) => {
+              const newWidgets = dashboardWidgets.map(w => 
+                w.id === configuringWidgetId ? { ...w, config: { ...w.config, ...config } } : w
+              );
+              setDashboardWidgets(newWidgets);
+              setConfiguringWidgetId(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       <ConfirmationModal 
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
@@ -2960,6 +3662,142 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }: { isO
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const WIDGET_METRICS: Record<string, string[]> = {
+  'regional-performance': ['Revenue', 'Cost', 'ROI', 'Leads', 'MQLs', 'SQLs', 'Wins'],
+  'campaign-performance': ['Spent', 'ROI', 'Revenue'],
+  'social-media-metrics': ['Subscribers', 'Engagement', 'Leads', 'ER', 'CTR', 'CPC', 'CPM', 'CPA', 'ROI'],
+  'channel-performance': ['Subscribers', 'Engagement', 'Eng. Rate', 'Leads', 'CTR', 'CPC', 'CPM', 'CPA', 'ROI'],
+  'digital-channel-analysis': ['Spend', 'Revenue', 'ROI', 'Clicks', 'Engagement'],
+};
+
+const WidgetConfigModal = ({ widget, onClose, onUpdate }: { widget: DashboardWidget, onClose: () => void, onUpdate: (config: any) => void }) => {
+  const { regions } = useStore();
+  const [selectedRegions, setSelectedRegions] = useState<Region[]>(widget.config?.regions || regions);
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(widget.config?.metrics || WIDGET_METRICS[widget.id] || []);
+  
+  const toggleRegion = (region: Region) => {
+    if (selectedRegions.includes(region)) {
+      setSelectedRegions(selectedRegions.filter(r => r !== region));
+    } else {
+      setSelectedRegions([...selectedRegions, region]);
+    }
+  };
+
+  const toggleMetric = (metric: string) => {
+    if (selectedMetrics.includes(metric)) {
+      setSelectedMetrics(selectedMetrics.filter(m => m !== metric));
+    } else {
+      setSelectedMetrics([...selectedMetrics, metric]);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden"
+      >
+        <div className="p-8 max-h-[80vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                <Settings2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Widget Configuration</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{widget.title}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+
+          <div className="space-y-8">
+            {/* Region Selection */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 block">Select Regions to Display</label>
+              <div className="grid grid-cols-3 gap-3">
+                {regions.map(region => (
+                  <button
+                    key={region}
+                    onClick={() => toggleRegion(region)}
+                    className={cn(
+                      "px-4 py-3 rounded-2xl text-xs font-bold transition-all border text-left flex items-center justify-between",
+                      selectedRegions.includes(region)
+                        ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                        : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 dark:hover:border-slate-700"
+                    )}
+                  >
+                    {region}
+                    {selectedRegions.includes(region) && <CheckCircle2 className="w-3 h-3" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Metric Selection */}
+            {WIDGET_METRICS[widget.id] && (
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 block">Select Metrics (Items) to Display</label>
+                <div className="flex flex-wrap gap-2">
+                  {WIDGET_METRICS[widget.id].map(metric => (
+                    <button
+                      key={metric}
+                      onClick={() => toggleMetric(metric)}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[10px] font-bold transition-all border flex items-center gap-2",
+                        selectedMetrics.includes(metric)
+                          ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-900/30 text-indigo-700 dark:text-indigo-400"
+                          : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 dark:hover:border-slate-700"
+                      )}
+                    >
+                      {metric}
+                      {selectedMetrics.includes(metric) && <CheckCircle2 className="w-3 h-3" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Display Type */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 block">Display Options</label>
+              <div className="flex gap-4">
+                <button className="flex-1 p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 text-emerald-700 text-xs font-bold flex flex-col items-center gap-2">
+                  <Layout className="w-5 h-5" />
+                  Table View
+                </button>
+                <button className="flex-1 p-4 rounded-2xl border border-slate-100 text-slate-400 text-xs font-bold flex flex-col items-center gap-2 opacity-50 cursor-not-allowed">
+                  <BarChart2 className="w-5 h-5" />
+                  Chart View
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-8 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 px-6 py-3 text-sm font-bold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={() => onUpdate({ regions: selectedRegions, metrics: selectedMetrics })}
+            className="flex-1 px-6 py-3 text-sm font-bold text-white bg-emerald-600 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+          >
+            Apply Changes
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 };

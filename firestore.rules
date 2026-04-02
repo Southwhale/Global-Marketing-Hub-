@@ -105,28 +105,28 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "jacqueline.marketer@gmail.com" && request.auth.token.email_verified == true)); // Default admin
+        ((request.auth.token.email.lower() == "jacqueline.marketer@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     // Check if user is a member of a project (using document data)
     function isProjectMemberData(data) {
       return isAuthenticated() && 
-        (data.members.hasAny([request.auth.uid]) || data.ownerId == request.auth.uid || isAdmin());
+        (isAdmin() || data.members.hasAny([request.auth.uid]) || data.ownerId == request.auth.uid);
     }
 
     // Check if user is a member of a project (using projectId)
     function isProjectMember(projectId) {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/projects/$(projectId)).data.members.hasAny([request.auth.uid]) ||
-         get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid || 
-         isAdmin());
+        (isAdmin() || 
+         get(/databases/$(database)/documents/projects/$(projectId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid);
     }
 
     // Check if user is the owner of a project
     function isProjectOwner(projectId) {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid || isAdmin());
+        (isAdmin() || get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid);
     }
 
     function isValidTask(data) {
@@ -141,13 +141,23 @@ service cloud.firestore {
     }
 
     function isValidKpi(data) {
-      return data.id is string &&
-             data.projectId is string &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+      return (!('id' in data) || data.id is string) &&
+             (!('projectId' in data) || data.projectId is string) &&
+             (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() < 500)) &&
              (!('statement' in data) || data.statement is string) &&
              (!('unit' in data) || data.unit is string) &&
              (!('pillar' in data) || data.pillar is string) &&
-             (!('theme' in data) || data.theme is string);
+             (!('theme' in data) || data.theme is string) &&
+             (!('targets' in data) || data.targets is map) &&
+             (!('yearlyTarget' in data) || data.yearlyTarget is number) &&
+             (!('monthlyTargets' in data) || data.monthlyTargets is map) &&
+             (!('campaigns' in data) || data.campaigns is list) &&
+             (!('owners' in data) || data.owners is list) &&
+             (!('defaultBudget' in data) || data.defaultBudget is number) &&
+             (!('regionalCost' in data) || data.regionalCost is map) &&
+             (!('tasks' in data) || data.tasks is list) &&
+             (!('defaultTargetRevenue' in data) || data.defaultTargetRevenue is number) &&
+             (!('historicalPerformance' in data) || data.historicalPerformance is list);
     }
 
     function isValidPerformanceEntry(data) {
@@ -165,7 +175,12 @@ service cloud.firestore {
              data.clicks is number &&
              data.impressions is number &&
              data.engagement is number &&
-             data.subscribers is number;
+             data.subscribers is number &&
+             (!('views' in data) || data.views is number) &&
+             (!('reach' in data) || data.reach is number) &&
+             (!('ctr' in data) || data.ctr is number) &&
+             (!('cpc' in data) || data.cpc is number) &&
+             (!('cpm' in data) || data.cpm is number);
     }
 
     // User Profiles
@@ -187,14 +202,40 @@ service cloud.firestore {
         allow update: if isProjectMember(projectId) && isValidPerformanceEntry(request.resource.data);
         allow delete: if isProjectMember(projectId);
       }
+
+      // Team Comments
+      match /comments/{commentId} {
+        allow read: if isProjectMember(projectId) || get(/databases/$(database)/documents/projects/$(projectId)).data.isPublic == true;
+        allow create: if isProjectMember(projectId);
+        allow update, delete: if isProjectMember(projectId) && (resource.data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // Leads collection
+    match /leads/{leadId} {
+      allow read: if isAuthenticated() && (resource == null || isProjectMember(resource.data.projectId));
+      allow create: if isAuthenticated() && isProjectMember(request.resource.data.projectId);
+      allow update, delete: if isAuthenticated() && isProjectMember(resource.data.projectId);
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && (resource == null || isProjectMember(resource.data.projectId));
+      allow create: if isAuthenticated() && isProjectMember(request.resource.data.projectId);
+      allow update, delete: if isAuthenticated() && isProjectMember(resource.data.projectId);
+    }
+
+    // Notifications (user-specific)
+    match /users/{userId}/notifications/{notificationId} {
+      allow read, write: if isOwner(userId);
     }
 
     // KPIs
     match /kpis/{kpiId} {
-      allow read: if isProjectMember(resource.data.projectId) || get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.isPublic == true;
-      allow create: if isProjectMember(request.resource.data.projectId) && isValidKpi(request.resource.data);
-      allow update: if isProjectMember(resource.data.projectId) && isValidKpi(request.resource.data);
-      allow delete: if isProjectMember(resource.data.projectId);
+      allow read: if isAuthenticated();
+      allow create: if (isAdmin() || isProjectMember(request.resource.data.projectId)) && isValidKpi(request.resource.data);
+      allow update: if isAdmin() || (isProjectMember(resource.data.projectId) && isValidKpi(request.resource.data));
+      allow delete: if isAdmin() || isProjectMember(resource.data.projectId);
     }
 
     // Campaigns
@@ -231,6 +272,12 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
+    }
+
+    // Global Settings
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

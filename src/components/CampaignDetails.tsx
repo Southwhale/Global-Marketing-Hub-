@@ -4,7 +4,8 @@ import {
   ArrowLeft, Megaphone, Target, TrendingUp, DollarSign, 
   Globe2, Calendar, Activity, Zap, Sparkles, 
   BarChart2, Users, ShoppingBag, MessageSquare,
-  ChevronRight, ArrowUpRight, ArrowDownRight
+  ChevronRight, ArrowUpRight, ArrowDownRight,
+  CheckCircle2, Clock, AlertCircle, Circle
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,6 +21,7 @@ export const CampaignDetails: React.FC = () => {
     setSelectedCampaignId, 
     setSelectedKpiId,
     setActiveScreen, 
+    setSelectedTaskId,
     campaigns,
     tasks,
     kpis,
@@ -29,6 +31,8 @@ export const CampaignDetails: React.FC = () => {
 
   const [isEditingName, setIsEditingName] = React.useState(false);
   const [editedName, setEditedName] = React.useState('');
+  const [isEditingTargetRevenue, setIsEditingTargetRevenue] = React.useState(false);
+  const [editedTargetRevenue, setEditedTargetRevenue] = React.useState(0);
 
   const campaign = campaigns.find(c => c.id === selectedCampaignId);
 
@@ -43,6 +47,7 @@ export const CampaignDetails: React.FC = () => {
   React.useEffect(() => {
     if (campaign) {
       setEditedName(campaign.name);
+      setEditedTargetRevenue(campaign.targetRevenue || 0);
     }
   }, [campaign]);
 
@@ -140,6 +145,51 @@ export const CampaignDetails: React.FC = () => {
                     </button>
                   </div>
                 )}
+                
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Target Revenue:</span>
+                  {isEditingTargetRevenue ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={editedTargetRevenue}
+                        onChange={(e) => setEditedTargetRevenue(Number(e.target.value))}
+                        className="w-24 text-xs font-bold text-slate-900 dark:text-white border-b border-emerald-500 focus:outline-none bg-transparent"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          updateCampaign(campaign.id, { targetRevenue: editedTargetRevenue });
+                          setIsEditingTargetRevenue(false);
+                        }}
+                        className="text-emerald-500 hover:text-emerald-600 transition-colors"
+                      >
+                        <Zap className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingTargetRevenue(false);
+                          setEditedTargetRevenue(campaign.targetRevenue || 0);
+                        }}
+                        className="text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <ArrowLeft className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group/target">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        ${(campaign.targetRevenue || 0).toLocaleString()}
+                      </span>
+                      <button 
+                        onClick={() => setIsEditingTargetRevenue(true)}
+                        className="p-1 text-slate-400 hover:text-emerald-600 opacity-0 group-hover/target:opacity-100 transition-all"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <span className={cn(
                     "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
@@ -221,6 +271,27 @@ export const CampaignDetails: React.FC = () => {
             <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Total Leads</p>
             <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{(campaign.leads || 0).toLocaleString()}</h3>
           </div>
+
+          {campaign.targetRevenue && (
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className={cn(
+                    "text-[10px] font-bold px-2 py-0.5 rounded-lg",
+                    totalRegRevenue >= campaign.targetRevenue ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" : "text-amber-600 bg-amber-50 dark:bg-amber-900/20"
+                  )}>
+                    {((totalRegRevenue / campaign.targetRevenue) * 100).toFixed(1)}%
+                  </span>
+                  <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase mt-1">Goal Progress</span>
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Target Revenue</p>
+              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">${campaign.targetRevenue.toLocaleString()}</h3>
+            </div>
+          )}
 
           {campaign.q4Target && (
             <>
@@ -439,6 +510,181 @@ export const CampaignDetails: React.FC = () => {
               </div>
             </div>
 
+            {/* Campaign Tasks */}
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Campaign Tasks</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Operational tasks for this campaign</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500">{campaignTasks.length} Total Tasks</span>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800">
+                      <th className="pb-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Task Name</th>
+                      <th className="pb-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="pb-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Owner</th>
+                      <th className="pb-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Due Date</th>
+                      <th className="pb-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Budget</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                    {campaignTasks.map(task => (
+                      <tr 
+                        key={task.id} 
+                        className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSelectedTaskId(task.id);
+                        }}
+                      >
+                        <td className="py-4 pr-4">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{task.name}</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5">{task.id}</p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                            task.status === 'completed' ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" :
+                            task.status === 'in-progress' ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" :
+                            task.status === 'delayed' ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" :
+                            "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                          )}>
+                            {task.status}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                              {task.owner.charAt(0)}
+                            </div>
+                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{task.owner}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{task.dueDate || 'No date'}</span>
+                        </td>
+                        <td className="py-4 text-right">
+                          <span className="text-sm font-bold text-slate-900 dark:text-white">${(task.budget || 0).toLocaleString()}</span>
+                        </td>
+                      </tr>
+                    ))}
+                    {campaignTasks.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center">
+                          <p className="text-sm text-slate-400 italic">No tasks assigned to this campaign</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Strategic Alignment - Linked KPIs */}
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Strategic Alignment</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">KPIs supported by this campaign</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {campaignKpis.map(kpi => (
+                  <div 
+                    key={kpi.id} 
+                    className="p-6 border border-slate-100 dark:border-slate-800 rounded-3xl hover:border-emerald-200 dark:hover:border-emerald-900/50 transition-all group bg-slate-50/30 dark:bg-slate-800/10"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 block">{kpi.id}</span>
+                        <h4 
+                          onClick={() => {
+                            setSelectedKpiId(kpi.id);
+                            setActiveScreen('kpi-details');
+                          }}
+                          className="text-base font-bold text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer transition-colors flex items-center gap-2"
+                        >
+                          {kpi.name}
+                          <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </h4>
+                      </div>
+                      <div className="px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                        {kpi.pillar}
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 font-medium">
+                      Theme: <span className="text-slate-700 dark:text-slate-300">{kpi.theme}</span>
+                    </p>
+                    
+                    <div className="grid grid-cols-5 gap-2 mb-6">
+                      {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => {
+                        const target = (kpi.targets as any)[q.toLowerCase()];
+                        return (
+                          <div key={q} className="text-center p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                            <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">{q}</p>
+                            <p className="text-[10px] font-bold text-slate-900 dark:text-white">
+                              {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                              {target.toLocaleString()}
+                              {kpi.unit === '%' ? '%' : ''}
+                            </p>
+                          </div>
+                        );
+                      })}
+                      <div className="text-center p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                        <p className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">Year</p>
+                        <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                          {kpi.unit === 'USD' || kpi.unit === 'KRW' ? '$' : ''}
+                          {(kpi.yearlyTarget || 0).toLocaleString()}
+                          {kpi.unit === '%' ? '%' : ''}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                        <span className="text-slate-400 dark:text-slate-500">Overall Progress</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          {kpi.yearlyTarget && kpi.yearlyTarget > 0 
+                            ? ((kpi.historicalPerformance?.[kpi.historicalPerformance.length - 1] || 0) / kpi.yearlyTarget * 100).toFixed(1)
+                            : '0.0'}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, kpi.yearlyTarget && kpi.yearlyTarget > 0 ? (kpi.historicalPerformance?.[kpi.historicalPerformance.length - 1] || 0) / kpi.yearlyTarget * 100 : 0)}%` }}
+                          transition={{ duration: 1, ease: "easeOut" }}
+                          className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {campaignKpis.length === 0 && (
+                <div className="text-center py-12 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+                  <Target className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">No KPIs linked to this campaign</p>
+                </div>
+              )}
+            </div>
+
             {/* Budget Allocation Stacked Bar Chart */}
             <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
               <div className="flex items-center justify-between mb-8">
@@ -505,6 +751,113 @@ export const CampaignDetails: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* Campaign Tasks Detailed List */}
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Campaign Tasks</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Detailed list of all tasks for this campaign</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                    {campaignTasks.length} Tasks
+                  </span>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800">
+                      <th className="text-left pb-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Task Name</th>
+                      <th className="text-left pb-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Status</th>
+                      <th className="text-left pb-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Owner</th>
+                      <th className="text-left pb-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Due Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                    {campaignTasks.map(task => (
+                      <tr 
+                        key={task.id} 
+                        onClick={() => setSelectedTaskId(task.id)}
+                        className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                      >
+                        <td className="py-4 pr-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                              task.status === 'completed' ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600" :
+                              task.status === 'in-progress' ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600" :
+                              task.status === 'delayed' ? "bg-rose-50 dark:bg-rose-900/20 text-rose-600" :
+                              "bg-slate-50 dark:bg-slate-800 text-slate-400"
+                            )}>
+                              {task.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> :
+                               task.status === 'in-progress' ? <Clock className="w-4 h-4" /> :
+                               task.status === 'delayed' ? <AlertCircle className="w-4 h-4" /> :
+                               <Activity className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 transition-colors">{task.name}</p>
+                              {task.priority && (
+                                <span className={cn(
+                                  "text-[8px] font-black uppercase px-1.5 py-0.5 rounded mt-1 inline-block",
+                                  task.priority === 'high' ? "bg-amber-500 text-white" :
+                                  task.priority === 'medium' ? "bg-blue-500 text-white" :
+                                  "bg-slate-400 text-white"
+                                )}>
+                                  {task.priority}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                            task.status === 'completed' ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" :
+                            task.status === 'in-progress' ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" :
+                            task.status === 'delayed' ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" :
+                            "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                          )}>
+                            <div className={cn(
+                              "w-1.5 h-1.5 rounded-full",
+                              task.status === 'completed' ? "bg-emerald-500" :
+                              task.status === 'in-progress' ? "bg-blue-500" :
+                              task.status === 'delayed' ? "bg-rose-500" :
+                              "bg-slate-400"
+                            )} />
+                            {task.status.replace('-', ' ')}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                              {task.owner.charAt(0)}
+                            </div>
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{task.owner}</span>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span className="text-xs font-medium">{task.dueDate || 'No date'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {campaignTasks.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-12 text-center">
+                          <Activity className="w-8 h-8 text-slate-200 dark:text-slate-800 mx-auto mb-3" />
+                          <p className="text-sm text-slate-400 italic">No tasks associated with this campaign</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           {/* Sidebar Info */}
@@ -532,49 +885,7 @@ export const CampaignDetails: React.FC = () => {
             </div>
 
             {/* Associated KPIs */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
-              <h3 className="font-bold text-slate-900 dark:text-white mb-6">Strategic Alignment</h3>
-              <div className="space-y-4">
-                {campaignKpis.map(kpi => (
-                  <div 
-                    key={kpi.id} 
-                    onClick={() => {
-                      setSelectedKpiId(kpi.id);
-                      setActiveScreen('kpi-details');
-                    }}
-                    className="p-4 border border-slate-100 dark:border-slate-800 rounded-2xl hover:border-emerald-200 dark:hover:border-emerald-900/50 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">{kpi.id}</span>
-                      <ArrowUpRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-emerald-600 transition-colors" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white mb-1">{kpi.name}</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-3">{kpi.pillar} • {kpi.theme}</p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-slate-400 dark:text-slate-500 font-bold uppercase">Q4 Target</span>
-                        <span className="text-slate-900 dark:text-white font-bold">{kpi.targets.q4}{kpi.unit}</span>
-                      </div>
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-slate-400 dark:text-slate-500 font-bold uppercase">Achievement</span>
-                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                          {((kpi.historicalPerformance[kpi.historicalPerformance.length - 1] / kpi.targets.q4) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-emerald-500 rounded-full" 
-                          style={{ width: `${Math.min((kpi.historicalPerformance[kpi.historicalPerformance.length - 1] / kpi.targets.q4) * 100, 100)}%` }} 
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {campaignKpis.length === 0 && (
-                  <p className="text-sm text-slate-400 italic text-center py-4">No KPIs linked to this campaign</p>
-                )}
-              </div>
-            </div>
+            {/* Strategic Alignment section moved to main column */}
 
             {/* Tasks */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -584,9 +895,16 @@ export const CampaignDetails: React.FC = () => {
               </div>
               <div className="space-y-3">
                 {campaignTasks.map(task => (
-                  <div key={task.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl transition-colors cursor-pointer group">
+                  <div 
+                    key={task.id} 
+                    onClick={() => setSelectedTaskId(task.id)}
+                    className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl transition-colors cursor-pointer group"
+                  >
                     <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/30 transition-colors">
-                      <Activity className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600" />
+                      {task.status === 'completed' ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> :
+                       task.status === 'in-progress' ? <Clock className="w-4 h-4 text-blue-500" /> :
+                       task.status === 'delayed' ? <AlertCircle className="w-4 h-4 text-rose-500" /> :
+                       <Activity className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -602,7 +920,19 @@ export const CampaignDetails: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">${task.spent.toLocaleString()} spent</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">${task.spent.toLocaleString()} spent</p>
+                        <span className="text-[8px] text-slate-300 dark:text-slate-700">•</span>
+                        <span className={cn(
+                          "text-[8px] font-bold uppercase",
+                          task.status === 'completed' ? "text-emerald-500" :
+                          task.status === 'in-progress' ? "text-blue-500" :
+                          task.status === 'delayed' ? "text-rose-500" :
+                          "text-slate-400"
+                        )}>
+                          {task.status.replace('-', ' ')}
+                        </span>
+                      </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                   </div>

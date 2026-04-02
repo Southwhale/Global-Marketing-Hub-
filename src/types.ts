@@ -65,6 +65,7 @@ export type Screen = 'landing' | 'dashboard' | 'settings' | 'alerts' | 'team' | 
 
 export type WidgetId = 
   | 'kpi-cards' 
+  | 'powerbi-insights'
   | 'regional-revenue-cost' 
   | 'campaign-performance' 
   | 'funnel-analysis' 
@@ -84,7 +85,10 @@ export type WidgetId =
   | 'regional-subscribers'
   | 'team-performance'
   | 'regional-performance'
-  | 'delayed-items';
+  | 'delayed-items'
+  | 'crm-performance'
+  | 'team-member-kpi-progress'
+  | 'kpi-targets-performance';
 
 export interface DashboardWidget {
   id: WidgetId;
@@ -94,9 +98,14 @@ export interface DashboardWidget {
   y: number;
   w: number;
   h: number;
+  config?: {
+    regions?: Region[];
+    metrics?: string[];
+    displayType?: 'table' | 'grid' | 'chart';
+  };
 }
 
-export type Region = 'ASIA' | 'MENA' | 'EU' | 'CIS' | 'LATAM' | 'NA' | 'OCEANIA' | 'RUS' | 'GLOBAL' | 'KOREA' | 'VINA';
+export type Region = string;
 
 export interface TimeSeriesMetric {
   period: number; // Month number since start (0, 1, 2...)
@@ -146,6 +155,8 @@ export interface Campaign {
   costPerMql?: number;
   impressions?: number;
   clicks?: number;
+  views?: number;
+  reach?: number;
   // Channel specific indicators
   socialMetrics?: { engagement?: number; followers?: number; shares?: number; subscribers?: number };
   promotionMetrics?: { redemptionRate?: number; couponsUsed?: number };
@@ -170,6 +181,7 @@ export interface B2BCustomer {
   buyerCode?: string;
   lastActivity?: string;
   revenue?: number;
+  quantity?: number;
   employees?: number;
   website?: string;
 }
@@ -231,6 +243,7 @@ export interface Comment {
 
 export interface Task {
   id: string;
+  projectId: string;
   campaignId: string;
   kpiId?: string;
   name: string;
@@ -264,6 +277,8 @@ export interface KPI {
   owners: string[];
   statement: string;
   targets: { q1: number; q2: number; q3: number; q4: number };
+  monthlyTargets?: Record<string, number>; // e.g., { "2024-01": 100 }
+  yearlyTarget?: number;
   unit: string;
   pillar: string;
   theme: string;
@@ -277,12 +292,14 @@ export interface KPI {
 
 export interface PerformanceEntry {
   id: string;
+  projectId: string;
   campaignId: string;
   kpiId: string;
   customer?: string;
   region: Region;
   country?: string;
   date: string;
+  value: number; // Generic value for KPI tracking
   revenue: number;
   cost: number;
   leads: number;
@@ -293,6 +310,13 @@ export interface PerformanceEntry {
   impressions: number;
   engagement: number;
   subscribers: number;
+  views?: number;
+  reach?: number;
+  ctr?: number;
+  cpc?: number;
+  cpm?: number;
+  source?: string;
+  notes?: string;
 }
 
 export interface TeamMember {

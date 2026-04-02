@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { cn } from '../lib/utils';
 
 interface TeamMemberSelectProps {
-  label: string;
+  label?: string;
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   placeholder?: string;
@@ -26,15 +26,21 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectedMembers = selectedIds.map(id => teamMembers.find(m => m.id === id) || { id, name: id, role: 'Unknown', avatar: '', status: 'offline', lastActive: '' });
+  const selectedMembers = selectedIds.map(idOrName => 
+    teamMembers.find(m => m.id === idOrName || m.name === idOrName) || 
+    { id: idOrName, name: idOrName, role: 'External', avatar: '', status: 'offline', lastActive: '' }
+  );
   
   const filteredMembers = teamMembers.filter(m => 
     !selectedIds.includes(m.id) && 
+    !selectedIds.includes(m.name) &&
     m.name.toLowerCase().includes(inputValue.toLowerCase())
   );
 
-  const handleSelect = (id: string) => {
-    onChange([...selectedIds, id]);
+  const handleSelect = (name: string) => {
+    if (!selectedIds.includes(name)) {
+      onChange([...selectedIds, name]);
+    }
     setInputValue('');
     setIsOpen(false);
   };
@@ -44,17 +50,9 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
   };
 
   const handleAddNew = () => {
-    if (inputValue.trim()) {
-      const newId = `u-${Date.now()}`;
-      addTeamMember({
-        id: newId,
-        name: inputValue.trim(),
-        role: 'Team Member',
-        status: 'active',
-        lastActive: 'Just now',
-        avatar: `https://i.pravatar.cc/150?u=${newId}`
-      });
-      onChange([...selectedIds, newId]);
+    const newName = inputValue.trim();
+    if (newName && !selectedIds.includes(newName)) {
+      onChange([...selectedIds, newName]);
       setInputValue('');
       setIsOpen(false);
     }
@@ -62,7 +60,7 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
 
   return (
     <div className="relative" ref={wrapperRef}>
-      <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
+      {label && <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>}
       <div 
         className="flex flex-wrap gap-2 p-2 bg-white border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 transition-all min-h-[42px] cursor-text"
         onClick={() => setIsOpen(true)}
@@ -101,7 +99,7 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
             if (e.key === 'Enter' && inputValue.trim()) {
               e.preventDefault();
               if (filteredMembers.length > 0) {
-                handleSelect(filteredMembers[0].id);
+                handleSelect(filteredMembers[0].name);
               } else {
                 handleAddNew();
               }
@@ -117,10 +115,16 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
               {filteredMembers.map(member => (
                 <button
                   key={member.id}
-                  onClick={() => handleSelect(member.id)}
+                  onClick={() => handleSelect(member.name)}
                   className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors text-left"
                 >
-                  <img src={member.avatar} alt={member.name} className="w-6 h-6 rounded-full" />
+                  {member.avatar ? (
+                    <img src={member.avatar} alt={member.name} className="w-6 h-6 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-6 h-6 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-[10px] font-bold">
+                      {member.name.charAt(0)}
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm font-medium text-slate-700">{member.name}</div>
                     <div className="text-xs text-slate-500">{member.role}</div>
@@ -135,12 +139,12 @@ export function TeamMemberSelect({ label, selectedIds = [], onChange, placeholde
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Add "{inputValue}" as new member
+                Add "{inputValue}"
               </button>
             </div>
           ) : (
             <div className="p-4 text-center text-sm text-slate-500">
-              Type to search or add new member
+              Type to search or add
             </div>
           )}
         </div>
